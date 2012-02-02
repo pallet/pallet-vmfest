@@ -1,5 +1,11 @@
 (ns pallet.compute.vmfest
-  "A vmfest provider.
+  "VMFest Provider
+   ===============
+
+   The provider allows Pallet to use VirtualBox via VMFest.
+
+   Example Configuration
+   ---------------------
 
    An example service configuration in ~/.pallet/config.clj
 
@@ -30,80 +36,94 @@
             :node-path \"/Volumes/My Book/vms/nodes\"}
 
    The uuid's can be found using vboxmanage
+
        vboxmanage list hdds
-    or it can be the path to time image file itself (.vdi)
+
+    or it can be the path to time image file itself (.vdi).
 
    The images are disks that are immutable.  The virtualbox extensions need
    to be installed on the image.
 
    VMs' hardware configuration
-   ===========================
+   ---------------------------
+
    The hardware model to be run by pallet can be defined in the node template or
    built from the template and a default model. The model will determine by the
    first match in the following options
-      * The template has a :hardware-model entry with a vmfest hardware map. The
-        VMs created will follow this model
-           e.g. {... :hardware-model {:memory-size 1400 ...}}
-      * The template has a :hardware-id entry. The value for this entry should
-        correspond to an entry in the hardware-models map (or one of the entries
-        that pallet offers by default.
-           e.g. {... :hardware-id :small ...}
-      * The template has no hardware entry. Pallet will use the first model
-        in the hardware-models map to build an image that matches the rest of
-        the relevant entries in the map.
+
+     - The template has a `:hardware-model` entry with a vmfest hardware map.
+       The VMs created will follow this model
+           e.g. `{... :hardware-model {:memory-size 1400 ...}}`
+     - The template has a `:hardware-id` entry. The value for this entry should
+       correspond to an entry in the hardware-models map (or one of the entries
+       that pallet offers by default.
+           e.g. `{... :hardware-id :small ...}`
+     - The template has no hardware entry. Pallet will use the first model
+       in the hardware-models map to build an image that matches the rest of
+       the relevant entries in the map.
 
    By default, pallet offers the following specializations of this base model:
 
-      {:memory-size 512
-       :cpu-count 1
-       :storage [{:name \"IDE Controller\"
-                  :bus :ide
-                  :devices [nil nil nil nil]}]
-       :boot-mount-point [\"IDE Controller\" 0]})
+       {:memory-size 512
+        :cpu-count 1
+        :storage [{:name \"IDE Controller\"
+                   :bus :ide
+                   :devices [nil nil nil nil]}]
+        :boot-mount-point [\"IDE Controller\" 0]})
 
    The defined machines correspond to the above with some overrides:
 
-      {:micro {:memory 512 :cpu-count 1}
-       :small {:memory-size 1024 :cpu-count 1}
-       :medium {:memory-size 2048 :cpu-count 2}
-       :large {:memory-size (* 4 1024) :cpu-count 4}
+       {:micro {:memory 512 :cpu-count 1}
+        :small {:memory-size 1024 :cpu-count 1}
+        :medium {:memory-size 2048 :cpu-count 2}
+        :large {:memory-size (* 4 1024) :cpu-count 4}
 
-   You can define your own hardware models that will be added to the default ones,
-   or in the case that they're named the same, they will replace the default ones.
-   Custom models will also extend the base model above.
+   You can define your own hardware models that will be added to the default
+   ones, or in the case that they're named the same, they will replace the
+   default ones.  Custom models will also extend the base model above.
 
    Networking
-   ==========
+   ----------
 
    Pallet offers two networking models: local and bridged.
 
-   In Local mode pallet creates two network interfaces in the VM, one for an internal
-   network (e.g. vboxnet0), and the other one for a NAT network. This option doesn't
-   require VM's to obtain an external IP address, but requires the image booted to
-   bring up at least eth0 and eth1, so this method won't work on all images.
+   In Local mode pallet creates two network interfaces in the VM, one for an
+   internal network (e.g. vboxnet0), and the other one for a NAT network. This
+   option doesn't require VM's to obtain an external IP address, but requires
+   the image booted to bring up at least eth0 and eth1, so this method won't
+   work on all images.
 
-   In Bridged mode pallet creates one interface in the VM that is bridged on a phisical
-   network interface. For pallet to work, this physical interface must have an IP address
-   that must be hooked in an existing network. This mode works with all images.
+   In Bridged mode pallet creates one interface in the VM that is bridged on a
+   phisical network interface. For pallet to work, this physical interface must
+   have an IP address that must be hooked in an existing network. This mode
+   works with all images.
 
    The networking configuration for each VM created is determined by (in order):
-      * the template contains a :hardware-model map with a :network-type entry
-      * the template contains a :network-type entry
-      * the service configuration contains a :default-network-type entry
-      * :local
 
-   Each networking type must attach to a network interface, be it local or bridged.
-   The decision about which network interface to attach is done in the following way
-   (in order):
-     * For bridged networking:
-         * A :default-bridged-interface entry exists in the service defition
-         * Pallet will try to find a suitable interface for the machine.
-         * if all fails, VMs will fail to start
-     * For local networking:
-         * A :default-local-interface entry exists in the service definition
-         * vboxnet0 (created by default by VirtualBox)
+     - the template contains a `:hardware-model` map with a `:network-type`
+       entry
+     - the template contains a `:network-type` entry
+     - the service configuration contains a `:default-network-type` entry
+     - `:local`
 
-"
+   Each networking type must attach to a network interface, be it local or
+   bridged.  The decision about which network interface to attach is done in the
+   following way (in order):
+
+     - For bridged networking:
+         - A `:default-bridged-interface` entry exists in the service definition
+         - Pallet will try to find a suitable interface for the machine.
+         - if all fails, VMs will fail to start
+     - For local networking:
+         - A `:default-local-interface` entry exists in the service definition
+         - vboxnet0 (created by default by VirtualBox)
+
+   Links
+   -----
+
+     - [VMFest](https://github.com/tbatchelli/vmfest)
+     - [VirtualBox](https://virtualbox.org/)
+     - [Pallet](http://palletops.com/)"
   (:require
    [clojure.java.io :as io]
    [clojure.string :as string]
@@ -132,9 +152,6 @@
   (:use
    [slingshot.slingshot :only [throw+ try+]]))
 
-(defn supported-providers []
-  ["virtualbox"])
-
 ;; fallback os family translation data. This should be removed once
 ;; everyone is using metadata in their images.
 (def os-family-name
@@ -147,11 +164,10 @@
 (def os-family-from-name
   (zipmap (vals os-family-name) (keys os-family-name)))
 
-;; names of tags used to tag the VMs once created
+;;; names of tags used to tag the VMs once created
 (def ip-tag "/pallet/ip")
 (def group-name-tag "/pallet/group-name")
 (def image-meta-tag "/pallet/image-meta")
-
 
 (def
   ^{:doc "Determine what time of VM user session will be created by default:
@@ -159,11 +175,10 @@
     :private true}
   default-vm-session-type "headless") ; gui, headless or sdl
 
-
 (defn- image-meta-from-node
   "Obtains the image metadata from the node's extra parameters"
   [node]
-  (if-let [meta-str (manager/get-extra-data node image-meta-tag)]
+  (when-let [meta-str (manager/get-extra-data node image-meta-tag)]
     (when-not (empty? meta-str)
       (print "meta is:" meta-str)
       (with-in-str meta-str (read)))))
@@ -240,7 +255,7 @@
 (defn- current-time-millis []
   (System/currentTimeMillis))
 
-(defn wait-for-ip
+(defn- wait-for-ip
   "Wait for the machines IP to become available by the provided amount of
   milliseconds, or 5min by default."
   ([machine] (wait-for-ip machine 300000))
@@ -263,7 +278,7 @@
              ip))))))
 
 
-(defn machine-name
+(defn- machine-name
   "Generate a machine name based on the grup name and an index"
   [group-name n]
   (format "%s-%s" group-name n))
@@ -364,12 +379,13 @@
 (defn- regexp-match
   [image-properties kw arg]
   (when-let [value (image-properties kw)]
-    ;;(println (format "matching %s=%s for %s in image: %s" kw value arg image-properties))
+    (logging/tracef
+     "matching %s=%s for %s in image: %s" kw value arg image-properties)
     (re-matches (re-pattern arg) value)))
 
 (def
-  ^{:doc "maps the template field with a function that will determine if the template
-  matches"
+  ^{:doc "Maps the template field with a function that will determine if the
+          template matches."
     :private true}
   template-matchers
   {:os-version-matches (fn [image-properties kw arg]
@@ -383,7 +399,7 @@
    :os-family (fn [image-properties kw arg]
                 (equality-match image-properties :os-family arg))})
 
-(defn all-images-from-template
+(defn- all-images-from-template
   "Finds all the images that match a template"
   [images template]
   (into {}
@@ -404,7 +420,7 @@
              template))
           images))))
 
-(defn image-from-template
+(defn- image-from-template
   "Use the template to select an image from the image map."
   [images template]
   (logging/debugf "Looking for %s in %s" template images)
@@ -442,11 +458,11 @@
 
 (def
   ^{:dynamic true
-    :doc (str "The buffer size (in bytes) for the piped stream used to implement
+    :doc "The buffer size (in bytes) for the piped stream used to implement
     the :stream option for :out. If your ssh commands generate a high volume of
     output, then this buffer size can become a bottleneck. You might also
     increase the frequency with which you read the output stream if this is an
-    issue.")}
+    issue."}
   *piped-stream-buffer-size* (* 1024 1024))
 
 (defn- piped-streams
@@ -454,7 +470,7 @@
   (let [os (java.io.PipedOutputStream.)]
     [os (java.io.PipedInputStream. os *piped-stream-buffer-size*)]))
 
-(defn gzip [from to]
+(defn- gzip [from to]
   (with-open [input (io/input-stream from)
               output (java.util.zip.GZIPOutputStream. (io/output-stream to))]
     (io/copy input output)))
@@ -466,9 +482,10 @@
     "Publish the image to the specified blobstore container")
   (has-image? [service image-key]
     "Predicate to test for the presence of a specific image")
-  (find-images [service template]))
+  (find-images [service template]
+    "Determine the best match image for a given image template"))
 
-(defn hardware-model-from-template [model template network-type interface]
+(defn- hardware-model-from-template [model template network-type interface]
   (merge model
          {:memory-size (or (:min-ram template)
                            (:memory-size model))
@@ -478,7 +495,7 @@
           ;; todo: allow overriding the interface here
           }))
 
-(defn selected-hardware-model
+(defn- selected-hardware-model
   [{:keys [hardware-id hardware-model] :as template} models
    default-network-type default-local-interface default-bridged-interface]
   (let [model
@@ -672,7 +689,10 @@
   (find-images [_ template]
     (all-images-from-template @images template)))
 
-(defn add-image [compute url & {:as options}]
+(defn add-image
+  "Add an image to the images available. The image will be installed from the
+   specified `url`."
+  [compute url & {:as options}]
   (install-image compute url options))
 
 (def base-model
@@ -698,7 +718,10 @@
                             :image-id (name k)))
                images)))
 
-;;;; Compute seyrvice
+;;;; Compute service SPI
+(defn supported-providers []
+  ["virtualbox"])
+
 (defmethod implementation/service :vmfest
   [_ {:keys [url identity credential images node-path model-path locations
              environment default-network-type default-bridged-interface
