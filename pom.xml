@@ -3,13 +3,12 @@
   <modelVersion>4.0.0</modelVersion>
   <parent>
     <groupId>org.cloudhoist</groupId>
-    <artifactId>pallet-pom</artifactId>
-    <version>0.7.1-SNAPSHOT</version>
-    <relativePath>../pallet-pom/pom.xml</relativePath>
+    <artifactId>parent-pom</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
   </parent>
   <groupId>org.cloudhoist</groupId>
   <artifactId>pallet-vmfest</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>0.2.0-SNAPSHOT</version>
   <packaging>jar</packaging>
   <name>Pallet vmfest provider</name>
   <description>
@@ -97,16 +96,19 @@
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
+      <version>1.6.1</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>ch.qos.logback</groupId>
       <artifactId>logback-core</artifactId>
+      <version>1.0.0</version>
       <scope>test</scope>
     </dependency>
     <dependency>
       <groupId>ch.qos.logback</groupId>
       <artifactId>logback-classic</artifactId>
+      <version>1.0.0</version>
       <scope>test</scope>
     </dependency>
 
@@ -171,8 +173,8 @@
 
   <properties>
     <vmfest.version>0.2.4-SNAPSHOT</vmfest.version>
-    <pallet.version>0.7.0-SNAPSHOT</pallet.version>
-    <pallet-vmfest.doc.version>0.1</pallet-vmfest.doc.version>
+    <pallet.version>0.6.8-SNAPSHOT</pallet.version>
+    <pallet-vmfest.doc.version>0.2</pallet-vmfest.doc.version>
   </properties>
 
 </project>

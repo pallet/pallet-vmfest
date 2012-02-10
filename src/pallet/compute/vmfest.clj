@@ -139,7 +139,6 @@
    [pallet.futures :as futures]
    [pallet.node :as node]
    [pallet.script :as script]
-   [pallet.ssh.execute :as ssh]
    [pallet.stevedore :as stevedore]
    [pallet.utils :as utils]
    [vmfest.manager :as manager]
@@ -148,9 +147,35 @@
    [vmfest.virtualbox.machine :as machine]
    [vmfest.virtualbox.model :as model]
    [vmfest.virtualbox.session :as session]
-   [vmfest.virtualbox.virtualbox :as virtualbox])
-  (:use
-   [slingshot.slingshot :only [throw+ try+]]))
+   [vmfest.virtualbox.virtualbox :as virtualbox]))
+
+;; slingshot version compatibility
+(try
+  (use '[slingshot.slingshot :only [throw+ try+]])
+  (catch Exception _
+    (use '[slingshot.core :only [throw+ try+]])))
+
+(defn has-pallet-ssh-execute?
+  []
+  (try
+    (require 'pallet.ssh.execute)
+    true
+    (catch Exception e)))
+
+(defmacro def-ssh-script-on-target
+  []
+  (if (has-pallet-ssh-execute?)
+    `(use '[pallet.ssh.execute :only [~'ssh-script-on-target]])
+    `(defn ssh-script-on-target
+       [session# action# action-type# script#]
+       {:pre [(-> session# :server :node)
+              (ns-resolve '~'pallet.execute '~'remote-sudo)]}
+       [((ns-resolve '~'pallet.execute '~'remote-sudo)
+         (node/primary-ip
+          (-> session# :server :node)) script# (:user session#) {:pty true})
+        session#])))
+
+(def-ssh-script-on-target)
 
 ;; fallback os family translation data. This should be removed once
 ;; everyone is using metadata in their images.
@@ -183,19 +208,20 @@
       (print "meta is:" meta-str)
       (with-in-str meta-str (read)))))
 
-(extend-type vmfest.virtualbox.model.Machine
+(deftype VmfestNode
+    [^vmfest.virtualbox.model.Machine node service]
   pallet.node/Node
-  (ssh-port [node] 22)
+  (ssh-port [_] 22)
   (primary-ip
-    [node]
+    [_]
     (try+
      (manager/get-ip node)
      (catch Exception _
        ;; fallback to the ip stored in the node's extra parameters
        (manager/get-extra-data node ip-tag))))
-  (private-ip [node] nil)
+  (private-ip [_] nil)
   (is-64bit?
-    [node]
+    [_]
     (let [meta (image-meta-from-node node)
           os-64-bit (:os-64-bit meta)
           os-type-id (:os-type-id meta)]
@@ -209,21 +235,23 @@
           (do
             (logging/warnf
              "Cannot determine if machine is 64 bit from metadata: '%s'" meta)
-            (if-let [os-type-id (session/with-no-session node [m] (.getOSTypeId m))]
+            (if-let [os-type-id (session/with-no-session
+                                  node [m] (.getOSTypeId m))]
               (boolean (re-find #"_64" os-type-id))
-              (logging/error "Cannot determine if machine is 64 bit by any means."))))))
+              (logging/error
+               "Cannot determine if machine is 64 bit by any means."))))))
   (group-name
-    [node]
+    [_]
     (let [group-name (manager/get-extra-data node group-name-tag)]
       (if (string/blank? group-name)
         (manager/get-extra-data node group-name-tag)
         group-name)))
   (hostname
-    [node]
+    [_]
     (session/with-no-session node [m]
       (.getName m)))
   (os-family
-    [node]
+    [_]
     (let [meta (image-meta-from-node node)
           os-family-from-meta (:os-family meta)]
       (if os-family-from-meta
@@ -237,17 +265,18 @@
                 :centos) ;; todo: remove this hack!
             )))))
   (os-version
-    [node]
+    [_]
     (let [meta (image-meta-from-node node)]
       (or
        (:os-version meta))))
   (running?
-    [node]
+    [_]
     (and
      (session/with-no-session node [vb-m] (.getAccessible vb-m))
      (= :running (manager/state node))))
-  (terminated? [node] false)
-  (id [node] (:id node)))
+  (terminated? [_] false)
+  (id [_] (:id node))
+  (compute-service [_] service))
 
 (defn- nil-if-blank [x]
   (if (string/blank? x) nil x))
@@ -317,12 +346,12 @@
   The node will be named 'machine-name', and will be built according
   to the supplied 'model'. This node will boot from the supplied
   'image' and will belong to the supplied 'group' "
-  [compute node-path node-spec machine-name image model group-name init-script
-   user]
+  [compute-service server node-path node-spec machine-name image model
+   group-name init-script user]
   (logging/tracef
    "Creating node from image: %s and hardware model %s" image model)
   (let [machine (manager/instance*
-                 compute machine-name image model node-path)]
+                 server machine-name image model node-path)]
     (manager/set-extra-data machine image-meta-tag (pr-str image))
     (manager/set-extra-data machine group-name-tag group-name)
     (manager/start
@@ -345,28 +374,30 @@
     ;; work under high contention (e.g. starting many nodes)
     (Thread/sleep 4000)
     (logging/tracef "Bootstrapping %s" (manager/get-ip machine))
-    (script/with-script-context
-      (action-plan/script-template-for-server {:image image})
-      (stevedore/with-script-language :pallet.stevedore.bash/bash
-        (let [user (if (:username image)
-                     (pallet.utils/make-user
-                      (:username image)
-                      :password (:password image)
-                      :no-sudo (:no-sudo image)
-                      :sudo-password (:sudo-password image))
-                     user)
-              [{:keys [out exit]} session] (ssh/ssh-script-on-target
-                                            {:server {:node machine} :user user}
-                                            {:node-value-path (gensym "vmfest")}
-                                            :script/bash
-                                            init-script)]
-          (when-not (zero? exit)
-            (manager/destroy machine)
-            (throw+
-             {:message (format "Bootstrap failed: %s" out)
-              :type :pallet/bootstrap-failure
-              :group-spec node-spec})))))
-    machine))
+    (let [node (VmfestNode. machine compute-service)]
+      (script/with-script-context
+        (action-plan/script-template-for-server {:image image})
+        (stevedore/with-script-language :pallet.stevedore.bash/bash
+          (let [user (if (:username image)
+                       (pallet.utils/make-user
+                        (:username image)
+                        :password (:password image)
+                        :no-sudo (:no-sudo image)
+                        :sudo-password (:sudo-password image))
+                       user)
+                [{:keys [out exit]} session]
+                (ssh-script-on-target
+                 {:server {:node node} :user user}
+                 {:node-value-path (gensym "vmfest")}
+                 :script/bash
+                 init-script)]
+            (when-not (zero? exit)
+              (manager/destroy machine)
+              (throw+
+               {:message (format "Bootstrap failed: %s" out)
+                :type :pallet/bootstrap-failure
+                :group-spec node-spec})))))
+      node)))
 
 (defn- always-match
   [image-properties kw arg]
@@ -374,6 +405,8 @@
 
 (defn- equality-match
   [image-properties kw arg]
+  (logging/tracef
+   "matching %s=%s for %s in %s" (image-properties kw) arg kw image-properties)
   (= (image-properties kw) arg))
 
 (defn- regexp-match
@@ -395,30 +428,37 @@
    :image-id-matches (fn [image-properties kw arg]
                        (regexp-match image-properties :image-id arg))
    :image-description-matches (fn [image-properties kw arg]
-                                (regexp-match image-properties :description arg))
+                                (regexp-match
+                                 image-properties :description arg))
    :os-family (fn [image-properties kw arg]
-                (equality-match image-properties :os-family arg))})
+                (equality-match image-properties :os-family arg))
+   :os-64-bit (fn [image-properties kw arg]
+                (equality-match image-properties :os-64-bit arg))})
 
 (defn- all-images-from-template
   "Finds all the images that match a template"
   [images template]
-  (into {}
-        (->
-         (filter
-          (fn image-matches? [[image-name image-properties]]
-            ;; check wether all the template matchers present in the
-            ;; template match and defined in 'template-matchers' match
-            ;; with the image
-            (every?
-             ;; either the key in the template has a value in
-             ;; 'template-matchers' or the template will always match,
-             ;; thus ignoring the key. Basically only try to match for
-             ;; entries in the template that have a matcher and ignore
-             ;; the rest.
-             #(((first %) template-matchers always-match)
-               image-properties (first %) (second %))
-             template))
-          images))))
+  (->>
+   images
+   (filter
+    (fn image-matches? [[image-name image-properties]]
+      ;; check wether all the template matchers present in the
+      ;; template match and defined in 'template-matchers' match
+      ;; with the image
+      (every?
+       ;; either the key in the template has a value in
+       ;; 'template-matchers' or the template will always match,
+       ;; thus ignoring the key. Basically only try to match for
+       ;; entries in the template that have a matcher and ignore
+       ;; the rest.
+       #(or
+         (((first %) template-matchers always-match)
+          image-properties (first %) (second %))
+         (logging/debugf
+          "Template match failed for image %s on %s"
+          (:image-id image-properties) (first %)))
+       template)))
+   (into {})))
 
 (defn- image-from-template
   "Use the template to select an image from the image map."
@@ -430,25 +470,25 @@
 
 (defn serial-create-nodes
   "Create all nodes for a group in parallel."
-  [target-machines-to-create server  node-path node-spec image machine-model
-   group-name init-script user]
+  [target-machines-to-create compute-service server node-path node-spec image
+   machine-model group-name init-script user]
   (doall
    (for [name target-machines-to-create]
      (create-node
-      server node-path node-spec name image machine-model group-name
-      init-script user))))
+      compute-service server node-path node-spec name image machine-model
+      group-name init-script user))))
 
 (defn parallel-create-nodes
   "Create all nodes for a group in parallel."
-  [target-machines-to-create server node-path node-spec image machine-model
-   group-name init-script user]
+  [target-machines-to-create compute-service server node-path node-spec image
+   machine-model group-name init-script user]
   ;; the doseq ensures that all futures are completed before
   ;; returning
   (->>
    (for [name target-machines-to-create]
      (future
        (create-node
-        server node-path node-spec name image machine-model
+        compute-service server node-path node-spec name image machine-model
         group-name init-script user)))
    doall ;; doall forces creation of all futures before any deref
    futures/add
@@ -534,7 +574,8 @@
     [server images locations network-type local-interface bridged-interface
      environment models]
   pallet.compute/ComputeService
-  (nodes [compute-service] (manager/machines server))
+  (nodes [compute-service]
+    (map #(VmfestNode. % compute-service) (manager/machines server)))
 
   (ensure-os-family [compute-service group] group)
 
@@ -545,13 +586,14 @@
                           (select-keys group-spec)
                           vals
                           (reduce merge))
-            _ (logging/infof "Template %s" template)
+            _ (logging/debugf "run-nodes with template %s" template)
             image (or (image-from-template
                        @images template)
                       (throw (RuntimeException.
-                              (format "No matching image for %s in"
-                                      (pr-str (:image group-spec))
-                                      @images))))
+                              (format
+                               "No matching image for %s in %s"
+                               (pr-str (:image group-spec))
+                               @images))))
             group-name (name (:group-name group-spec))
             machines (filter
                       #(session/with-no-session % [vb-m] (.getAccessible vb-m))
@@ -595,10 +637,15 @@
                             target-machines-to-create))
         (logging/debugf "Selected image: %s" image)
         (create-nodes-fn
-          target-machines-to-create server (:node-path locations)
-          group-spec (image @images)
+          target-machines-to-create
+          compute-service
+          server
+          (:node-path locations)
+          group-spec
+          (image @images)
           final-hardware-model
-          group-name init-script user))))
+          group-name
+          init-script user))))
 
   (reboot
     [compute nodes]
@@ -614,11 +661,13 @@
     [compute node _]
     ;; todo: wait for completion
     (logging/infof "Shutting down %s" (pr-str node))
-    (manager/power-down node)
-    (if-let [state (manager/wait-for-machine-state node [:powered-off] 300000)]
-      (logging/infof "Machine state is %s" state)
-      (logging/warn "Failed to wait for power down completion"))
-    (manager/wait-for-lockable-session-state node 2000))
+    (let [machine (.node node)]
+      (manager/power-down machine)
+      (if-let [state (manager/wait-for-machine-state
+                      machine [:powered-off] 300000)]
+        (logging/infof "Machine state is %s" state)
+        (logging/warn "Failed to wait for power down completion"))
+      (manager/wait-for-lockable-session-state machine 2000)))
 
   (shutdown
     [compute nodes user]
@@ -640,7 +689,7 @@
     [compute node]
     {:pre [node]}
     (compute/shutdown-node compute node nil)
-    (manager/destroy node))
+    (manager/destroy (.node node)))
 
   (images [compute]
     @images)
@@ -661,9 +710,9 @@
         (let [medium (virtualbox/find-medium vbox (:uuid image))
               file (java.io.File. (.getLocation medium))]
           (filesystem/with-temp-file [gzip-file]
-            (logging/infof "gzip to %s" (.getPath gzip-file))
+            (logging/debugf "gzip to %s" (.getPath gzip-file))
             (gzip file gzip-file)
-            (logging/infof "put gz %s" (.getPath gzip-file))
+            (logging/debugf "put gz %s" (.getPath gzip-file))
             (try
               (blobstore/put
                blobstore container (or path (str (.getName file) ".gz"))
@@ -691,9 +740,9 @@
 
 (defn add-image
   "Add an image to the images available. The image will be installed from the
-   specified `url`."
-  [compute url & {:as options}]
-  (install-image compute url options))
+   specified `url-string`."
+  [compute url-string & {:as options}]
+  (install-image compute url-string options))
 
 (def base-model
   {:memory-size 512
@@ -769,7 +818,7 @@
        local-iface
        bridged-iface))
     (doseq [[name model] models]
-      (logging/infof "loaded model %s = %s" name model))
+      (logging/debugf "loaded model %s = %s" name model))
     (VmfestService.
      (vmfest.virtualbox.model.Server. url identity credential)
      (atom images)
@@ -780,12 +829,28 @@
      environment
      models)))
 
-(defmethod clojure.core/print-method vmfest.virtualbox.model.Machine
+(defmethod clojure.core/print-method VmfestNode
   [node writer]
-  (.write
-   writer
-   (format
-    "%14s\t %14s\t public: %s"
-    (try (node/hostname node) (catch Throwable e "unknown"))
-    (try (node/group-name node) (catch Throwable e "unknown"))
-    (try (node/primary-ip node) (catch Throwable e "unknown")))))
+  (let [machine (.node node)
+        accessible (try (session/with-vbox (:server machine) [_ vbox]
+                          (session/with-no-session machine [m]
+                            (machine/get-attribute m :accessible?)))
+                        (catch Exception _))]
+    (cond
+      (not accessible)
+      (.write writer "Unaccessible vmfest node")
+
+      (not
+       (->>
+        (compute/nodes (.service node))
+        (some #(= (:id machine) (:id (.node %))))))
+      (.write writer "Unregistered vmfest node")
+
+      :else
+      (.write
+       writer
+       (format
+        "%14s\t %14s\t public: %s"
+        (try (node/hostname node) (catch Throwable e "unknown"))
+        (try (node/group-name node) (catch Throwable e "unknown"))
+        (try (node/primary-ip node) (catch Throwable e "unknown")))))))
