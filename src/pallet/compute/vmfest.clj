@@ -1,13 +1,10 @@
 (ns pallet.compute.vmfest
-  "VMFest Provider
-   ===============
-
-   The provider allows Pallet to use VirtualBox via VMFest.
+  "The VMFest provider allows Pallet to use VirtualBox via VMFest.
 
    Example Configuration
    ---------------------
 
-   An example service configuration in ~/.pallet/config.clj
+   An example service configuration in `~/.pallet/config.clj`
 
        :vb {:provider \"virtualbox\"
             :default-local-interface \"vboxnet0\"
@@ -35,7 +32,7 @@
             :model-path \"/Volumes/My Book/vms/disks\"
             :node-path \"/Volumes/My Book/vms/nodes\"}
 
-   The uuid's can be found using vboxmanage
+   The uuid's can be found using `vboxmanage`
 
        vboxmanage list hdds
 
@@ -51,16 +48,16 @@
    built from the template and a default model. The model will determine by the
    first match in the following options
 
-     - The template has a `:hardware-model` entry with a vmfest hardware map.
-       The VMs created will follow this model
-           e.g. `{... :hardware-model {:memory-size 1400 ...}}`
-     - The template has a `:hardware-id` entry. The value for this entry should
-       correspond to an entry in the hardware-models map (or one of the entries
-       that pallet offers by default.
-           e.g. `{... :hardware-id :small ...}`
-     - The template has no hardware entry. Pallet will use the first model
-       in the hardware-models map to build an image that matches the rest of
-       the relevant entries in the map.
+   - The template has a `:hardware-model` entry with a vmfest hardware map.
+     The VMs created will follow this model
+         e.g. `{... :hardware-model {:memory-size 1400 ...}}`
+   - The template has a `:hardware-id` entry. The value for this entry should
+     correspond to an entry in the hardware-models map (or one of the entries
+     that pallet offers by default.
+         e.g. `{... :hardware-id :small ...}`
+   - The template has no hardware entry. Pallet will use the first model
+     in the hardware-models map to build an image that matches the rest of
+     the relevant entries in the map.
 
    By default, pallet offers the following specializations of this base model:
 
@@ -100,23 +97,23 @@
 
    The networking configuration for each VM created is determined by (in order):
 
-     - the template contains a `:hardware-model` map with a `:network-type`
-       entry
-     - the template contains a `:network-type` entry
-     - the service configuration contains a `:default-network-type` entry
-     - `:local`
+   - the template contains a `:hardware-model` map with a `:network-type`
+     entry
+   - the template contains a `:network-type` entry
+   - the service configuration contains a `:default-network-type` entry
+   - `:local`
 
    Each networking type must attach to a network interface, be it local or
    bridged.  The decision about which network interface to attach is done in the
    following way (in order):
 
-     - For bridged networking:
-         - A `:default-bridged-interface` entry exists in the service definition
-         - Pallet will try to find a suitable interface for the machine.
-         - if all fails, VMs will fail to start
-     - For local networking:
-         - A `:default-local-interface` entry exists in the service definition
-         - vboxnet0 (created by default by VirtualBox)
+   - For bridged networking:
+       - A `:default-bridged-interface` entry exists in the service definition
+       - Pallet will try to find a suitable interface for the machine.
+       - if all fails, VMs will fail to start
+   - For local networking:
+       - A `:default-local-interface` entry exists in the service definition
+       - vboxnet0 (created by default by VirtualBox)
 
    Links
    -----
