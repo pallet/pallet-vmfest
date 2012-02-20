@@ -1,4 +1,4 @@
-# pallet-jclouds
+# pallet-vmfest
 
 A provider for [Pallet][palletops], to use [vmfest][vmfest] to access [virtualbox][virtualbox].
 
@@ -29,12 +29,10 @@ Installation is with maven or your favourite maven repository aware build tool.
 ### lein project.clj
 
 ```clojure
-:dependencies [[org.cloudhoist/pallet "0.7.0-SNAPSHOT"]
-               [org.cloudhoist/pallet-vmfest "0.1.0-SNAPSHOT"]]
+:dependencies [[org.cloudhoist/pallet "0.7.0-beta.1"]
+               [org.cloudhoist/pallet-vmfest "0.2.0-beta.1"]]
 :repositories {"sonatype"
-               "http://oss.sonatype.org/content/repositories/releases"
-               "sonatype-snapshots"
-               "http://oss.sonatype.org/content/repositories/snapshots"}
+               "http://oss.sonatype.org/content/repositories/releases"}
 ```
 
 ### maven pom.xml
@@ -44,12 +42,12 @@ Installation is with maven or your favourite maven repository aware build tool.
   <dependency>
     <groupId>org.cloudhoist</groupId>
     <artifactId>pallet</artifactId>
-    <version>0.7.0-SNAPSHOT</version>
+    <version>0.7.0-beta.1</version>
   </dependency>
   <dependency>
     <groupId>org.cloudhoist</groupId>
     <artifactId>pallet-vmfest</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.2.0-beta.1</version>
   </dependency>
 <dependencies>
 
@@ -57,10 +55,6 @@ Installation is with maven or your favourite maven repository aware build tool.
   <repository>
     <id>sonatype</id>
     <url>http://oss.sonatype.org/content/repositories/releases</url>
-  </repository>
-  <repository>
-    <id>sonatype-snapshots</id>
-    <url>http://oss.sonatype.org/content/repositories/snapshots</url>
   </repository>
 </repositories>
 ```
