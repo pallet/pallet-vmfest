@@ -769,7 +769,7 @@
 
 ;;;; Compute service SPI
 (defn supported-providers []
-  ["virtualbox"])
+  ["vmfest"])
 
 (defmethod implementation/service :vmfest
   [_ {:keys [url identity credential images node-path model-path locations
