@@ -6,7 +6,7 @@
 
    An example service configuration in `~/.pallet/config.clj`
 
-       :vb {:provider \"virtualbox\"
+       :vb {:provider \"vmfest\"
             :default-local-interface \"vboxnet0\"
             :default-bridged-interface \"en1: Wi-Fi 2 (AirPort)\"
             :default-network-type :local
@@ -560,7 +560,7 @@
            {:network (if (= network-type :local)
                        ;; local networking
                        [{:attachment-type :host-only
-                         :host-interface default-local-interface}
+                         :host-only-interface default-local-interface}
                         {:attachment-type :nat}]
                        ;; bridged networking
                        [{:attachment-type :bridged
@@ -633,6 +633,7 @@
         (logging/debug (str "target-machines-to-create"
                             target-machines-to-create))
         (logging/debugf "Selected image: %s" image)
+        (logging/debugf "Hardware model %s" final-hardware-model)
         (create-nodes-fn
           target-machines-to-create
           compute-service
