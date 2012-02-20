@@ -1,9 +1,25 @@
 (ns pallet.compute.vmfest
-  "A vmfest provider.
+  "VMFest Provider
+   ===============
+
+   The provider allows Pallet to use VirtualBox via VMFest.
+
+   Example Configuration
+   ---------------------
 
    An example service configuration in ~/.pallet/config.clj
 
        :vb {:provider \"virtualbox\"
+            :default-local-interface \"vboxnet0\"
+            :default-bridged-interface \"en1: Wi-Fi 2 (AirPort)\"
+            :default-network-type :local
+            :hardware-models
+            {:test
+             {:memory-size 768
+              :cpu-count 1}
+             :test-2
+             {:memory-size 512
+              :network-type :bridged}
             :images {:centos-5-3 {:description \"CentOS 5.3 32bit\"
                                   :uuid \"4697bdf7-7acf-4a20-8c28-e20b6bb58e25\"
                                   :os-family :centos
@@ -20,12 +36,95 @@
             :node-path \"/Volumes/My Book/vms/nodes\"}
 
    The uuid's can be found using vboxmanage
+
        vboxmanage list hdds
 
+    or it can be the path to time image file itself (.vdi).
+
    The images are disks that are immutable.  The virtualbox extensions need
-   to be installed on the image."
+   to be installed on the image.
+
+   VMs' hardware configuration
+   ---------------------------
+
+   The hardware model to be run by pallet can be defined in the node template or
+   built from the template and a default model. The model will determine by the
+   first match in the following options
+
+     - The template has a `:hardware-model` entry with a vmfest hardware map.
+       The VMs created will follow this model
+           e.g. `{... :hardware-model {:memory-size 1400 ...}}`
+     - The template has a `:hardware-id` entry. The value for this entry should
+       correspond to an entry in the hardware-models map (or one of the entries
+       that pallet offers by default.
+           e.g. `{... :hardware-id :small ...}`
+     - The template has no hardware entry. Pallet will use the first model
+       in the hardware-models map to build an image that matches the rest of
+       the relevant entries in the map.
+
+   By default, pallet offers the following specializations of this base model:
+
+       {:memory-size 512
+        :cpu-count 1
+        :storage [{:name \"IDE Controller\"
+                   :bus :ide
+                   :devices [nil nil nil nil]}]
+        :boot-mount-point [\"IDE Controller\" 0]})
+
+   The defined machines correspond to the above with some overrides:
+
+       {:micro {:memory 512 :cpu-count 1}
+        :small {:memory-size 1024 :cpu-count 1}
+        :medium {:memory-size 2048 :cpu-count 2}
+        :large {:memory-size (* 4 1024) :cpu-count 4}
+
+   You can define your own hardware models that will be added to the default
+   ones, or in the case that they're named the same, they will replace the
+   default ones.  Custom models will also extend the base model above.
+
+   Networking
+   ----------
+
+   Pallet offers two networking models: local and bridged.
+
+   In Local mode pallet creates two network interfaces in the VM, one for an
+   internal network (e.g. vboxnet0), and the other one for a NAT network. This
+   option doesn't require VM's to obtain an external IP address, but requires
+   the image booted to bring up at least eth0 and eth1, so this method won't
+   work on all images.
+
+   In Bridged mode pallet creates one interface in the VM that is bridged on a
+   phisical network interface. For pallet to work, this physical interface must
+   have an IP address that must be hooked in an existing network. This mode
+   works with all images.
+
+   The networking configuration for each VM created is determined by (in order):
+
+     - the template contains a `:hardware-model` map with a `:network-type`
+       entry
+     - the template contains a `:network-type` entry
+     - the service configuration contains a `:default-network-type` entry
+     - `:local`
+
+   Each networking type must attach to a network interface, be it local or
+   bridged.  The decision about which network interface to attach is done in the
+   following way (in order):
+
+     - For bridged networking:
+         - A `:default-bridged-interface` entry exists in the service definition
+         - Pallet will try to find a suitable interface for the machine.
+         - if all fails, VMs will fail to start
+     - For local networking:
+         - A `:default-local-interface` entry exists in the service definition
+         - vboxnet0 (created by default by VirtualBox)
+
+   Links
+   -----
+
+     - [VMFest](https://github.com/tbatchelli/vmfest)
+     - [VirtualBox](https://virtualbox.org/)
+     - [Pallet](http://palletops.com/)"
   (:require
-   [clojure.contrib.condition :as condition]
    [clojure.java.io :as io]
    [clojure.string :as string]
    [clojure.tools.logging :as logging]
@@ -38,6 +137,7 @@
    [pallet.environment :as environment]
    [pallet.execute :as execute]
    [pallet.futures :as futures]
+   [pallet.node :as node]
    [pallet.script :as script]
    [pallet.stevedore :as stevedore]
    [pallet.utils :as utils]
@@ -49,104 +149,166 @@
    [vmfest.virtualbox.session :as session]
    [vmfest.virtualbox.virtualbox :as virtualbox]))
 
-(defn supported-providers []
-  ["virtualbox"])
+;; slingshot version compatibility
+(try
+  (use '[slingshot.slingshot :only [throw+ try+]])
+  (catch Exception _
+    (use '[slingshot.core :only [throw+ try+]])))
 
+(defn has-pallet-ssh-execute?
+  []
+  (try
+    (require 'pallet.ssh.execute)
+    true
+    (catch Exception e)))
+
+(defmacro def-ssh-script-on-target
+  []
+  (if (has-pallet-ssh-execute?)
+    `(use '[pallet.ssh.execute :only [~'ssh-script-on-target]])
+    `(defn ssh-script-on-target
+       [session# action# action-type# script#]
+       {:pre [(-> session# :server :node)
+              (ns-resolve '~'pallet.execute '~'remote-sudo)]}
+       [((ns-resolve '~'pallet.execute '~'remote-sudo)
+         (node/primary-ip
+          (-> session# :server :node)) script# (:user session#) {:pty true})
+        session#])))
+
+(def-ssh-script-on-target)
+
+;; fallback os family translation data. This should be removed once
+;; everyone is using metadata in their images.
 (def os-family-name
   {:ubuntu "Ubuntu"
    :centos "RedHat"
    ;:rhel "RedHat"
-   :rhel "RedHat_64"})
-
-(def ip-tag "/pallet/ip")
-(def group-name-tag "/pallet/group-name")
-(def os-family-tag "/pallet/os-family")
-(def os-version-tag "/pallet/os-version")
-
-(def *vm-session-type* "headless") ; gui, headless or sdl
+   :rhel "RedHat_64"
+   :debian "Debian_64"})
 
 (def os-family-from-name
   (zipmap (vals os-family-name) (keys os-family-name)))
 
-(extend-type vmfest.virtualbox.model.Machine
-  pallet.compute/Node
-  (ssh-port [node] 22)
-  (primary-ip
-   [node]
-   (condition/handler-case
-    :type
-    (manager/get-ip node)
-    (handle :vbox-runtime
-      (manager/get-extra-data node ip-tag))))
-  (private-ip [node] nil)
-  (is-64bit?
-   [node]
-   (let [os-type-id (session/with-no-session node [m] (.getOSTypeId m))]
-     (boolean (re-find #"_64" os-type-id))))
-  (group-name
-   [node]
-   (let [group-name (manager/get-extra-data node group-name-tag)]
-     (if (string/blank? group-name)
-       (manager/get-extra-data node group-name-tag)
-       group-name)))
-  (hostname
-   [node]
-   (session/with-no-session node [m]
-     (.getName m)))
-  (os-family
-   [node]
-   (let [os-name (session/with-no-session node [m] (.getOSTypeId m))]
-     (or
-      (when-let [os-family (manager/get-extra-data node os-family-tag)]
-        (when-not (string/blank? os-family)
-          (keyword os-family)))
-      (os-family-from-name os-name os-name)
-      :centos) ;; hack!
-     ))
-  (os-version
-   [node]
-   (or
-    (manager/get-extra-data node os-version-tag)
-    "5.3"))
-  (running?
-   [node]
-   (and
-    (session/with-no-session node [vb-m] (.getAccessible vb-m))
-    (= :running (manager/state node))))
-  (terminated? [node] false)
-  (id [node] (:id node)))
+;;; names of tags used to tag the VMs once created
+(def ip-tag "/pallet/ip")
+(def group-name-tag "/pallet/group-name")
+(def image-meta-tag "/pallet/image-meta")
 
-(defn nil-if-blank [x]
+(def
+  ^{:doc "Determine what time of VM user session will be created by default:
+ \"headless\", \"gui\" or \"sdl\":"
+    :private true}
+  default-vm-session-type "headless") ; gui, headless or sdl
+
+(defn- image-meta-from-node
+  "Obtains the image metadata from the node's extra parameters"
+  [node]
+  (when-let [meta-str (manager/get-extra-data node image-meta-tag)]
+    (when-not (empty? meta-str)
+      (print "meta is:" meta-str)
+      (with-in-str meta-str (read)))))
+
+(deftype VmfestNode
+    [^vmfest.virtualbox.model.Machine node service]
+  pallet.node/Node
+  (ssh-port [_] 22)
+  (primary-ip
+    [_]
+    (try+
+     (manager/get-ip node)
+     (catch Exception _
+       ;; fallback to the ip stored in the node's extra parameters
+       (manager/get-extra-data node ip-tag))))
+  (private-ip [_] nil)
+  (is-64bit?
+    [_]
+    (let [meta (image-meta-from-node node)
+          os-64-bit (:os-64-bit meta)
+          os-type-id (:os-type-id meta)]
+      ;; either :os-64-bit is present, or we get it from :os-type-id
+      ;; if present, or we try to guess from the VM itself
+      (or (or os-64-bit
+              (when os-type-id
+                (boolean (re-find #"_64" os-type-id))))
+          ;; try guessing it from the VBox Machine object. This should
+          ;; not be necessary in the near future. Remove after 0.3
+          (do
+            (logging/warnf
+             "Cannot determine if machine is 64 bit from metadata: '%s'" meta)
+            (if-let [os-type-id (session/with-no-session
+                                  node [m] (.getOSTypeId m))]
+              (boolean (re-find #"_64" os-type-id))
+              (logging/error
+               "Cannot determine if machine is 64 bit by any means."))))))
+  (group-name
+    [_]
+    (let [group-name (manager/get-extra-data node group-name-tag)]
+      (if (string/blank? group-name)
+        (manager/get-extra-data node group-name-tag)
+        group-name)))
+  (hostname
+    [_]
+    (session/with-no-session node [m]
+      (.getName m)))
+  (os-family
+    [_]
+    (let [meta (image-meta-from-node node)
+          os-family-from-meta (:os-family meta)]
+      (if os-family-from-meta
+        os-family-from-meta
+        ;; try guessing it from the VBox Machine object. This should
+        ;; not be necessary in the near future. Remove after 0.3
+        (do
+          (logging/warnf "Cannot get os-family from node's metadata '%s'. Trying to guess" meta)
+          (let [os-name (session/with-no-session node [m] (.getOSTypeId m))]
+            (or (os-family-from-name os-name os-name)
+                :centos) ;; todo: remove this hack!
+            )))))
+  (os-version
+    [_]
+    (let [meta (image-meta-from-node node)]
+      (or
+       (:os-version meta))))
+  (running?
+    [_]
+    (and
+     (session/with-no-session node [vb-m] (.getAccessible vb-m))
+     (= :running (manager/state node))))
+  (terminated? [_] false)
+  (id [_] (:id node))
+  (compute-service [_] service))
+
+(defn- nil-if-blank [x]
   (if (string/blank? x) nil x))
 
 (defn- current-time-millis []
   (System/currentTimeMillis))
 
-(defn wait-for-ip
-  "Wait for the machines IP to become available."
+(defn- wait-for-ip
+  "Wait for the machines IP to become available by the provided amount of
+  milliseconds, or 5min by default."
   ([machine] (wait-for-ip machine 300000))
   ([machine timeout]
      (let [timeout (+ (current-time-millis) timeout)]
        (loop []
-         (try
-           (let [ip (try (manager/get-ip machine)
-                         (catch org.virtualbox_4_0.VBoxException e
-                           (logging/warnf
-                            "wait-for-ip: Machine %s not started yet..."
-                            machine))
-                         (catch clojure.contrib.condition.Condition e
-                           (logging/warnf
-                            "wait-for-ip: Machine %s is not accessible yet..."
-                            machine)))]
-             (if (and (string/blank? ip) (< (current-time-millis) timeout))
-               (do
-                 (Thread/sleep 2000)
-                 (recur))
-               ip)))))))
+         (let [ip (try (manager/get-ip machine)
+                       (catch RuntimeException e
+                         (logging/warnf
+                          "wait-for-ip: Machine %s not started yet..."
+                          machine))
+                       (catch Exception e
+                         (logging/warnf
+                          "wait-for-ip: Machine %s is not accessible yet..."
+                          machine)))]
+           (if (and (string/blank? ip) (< (current-time-millis) timeout))
+             (do
+               (Thread/sleep 2000)
+               (recur))
+             ip))))))
 
 
-(defn machine-name
-  "Generate a machine name"
+(defn- machine-name
+  "Generate a machine name based on the grup name and an index"
   [group-name n]
   (format "%s-%s" group-name n))
 
@@ -154,7 +316,14 @@
   (os-families [compute] "Return supported os-families")
   (medium-formats [compute] "Return supported medium-formats"))
 
-(defn node-data [m]
+(defn- node-data
+  "data about a running node: name, description, session state,
+  ip address and group to which it belongs.
+
+  returns: [name description session state] {:ip ip :group-name group}*
+
+  (*) only if the machine is accessible."
+  [m]
   (let [attributes (session/with-no-session m [im]
                      [(.getName im)
                       (.getDescription im)
@@ -167,143 +336,160 @@
         group-name (when open? (manager/get-extra-data m group-name-tag))]
     (into attributes {:ip ip :group-name group-name}) ))
 
-(defn node-infos [compute-service]
+(defn- node-infos [compute-service]
   (let [nodes (manager/machines compute-service)]
     (map node-data nodes)))
 
-(defn add-sata-controller [m]
-  {:pre [(model/IMachine? m)]}
-  (machine/add-storage-controller m "SATA Controller" :sata))
+(defn- create-node
+  "Instantiates a compute node on vmfest and runs the supplied init script.
 
-(defn basic-config [m {:keys [memory-size cpu-count] :as parameters}]
-  (let [parameters (merge {:memory-size 512 :cpu-count 1} parameters)]
-    (manager/configure-machine m parameters)
-    (manager/set-bridged-network m "en1: AirPort")
-    (manager/add-ide-controller m)))
-
-(def hardware-parameters
-  {:min-ram :memory-size
-   :min-cores :cpu-count})
-
-(def hardware-config
-  {:bridged-network (fn [m iface] (manager/set-bridged-network m iface))})
-
-(defn machine-model-with-parameters
-  "Set a machine basic parameters and default configuration"
-  [m image]
-  (let [hw-keys (filter hardware-parameters (keys image))]
-    (basic-config
-     m (zipmap (map hardware-parameters hw-keys) (map image hw-keys)))))
-
-(defn machine-model
-  "Construct a machine model function from a node image spec"
-  [image]
-  (fn [m]
-    (logging/debugf "Machine model for %s" image)
-    (machine-model-with-parameters m image)
-    (doseq [kw (filter hardware-config (keys image))]
-      ((hardware-config kw) m (image kw)))))
-
-(defn create-node
-  [compute node-path node-spec machine-name images image-id machine-models
+  The node will be named 'machine-name', and will be built according
+  to the supplied 'model'. This node will boot from the supplied
+  'image' and will belong to the supplied 'group' "
+  [compute-service server node-path node-spec machine-name image model
    group-name init-script user]
-  {:pre [image-id]}
-  (logging/tracef "Creating node from image-id: %s" image-id)
-  (let [machine (binding [manager/*images* images
-                          manager/*machine-models* machine-models]
-                  (manager/instance
-                   compute machine-name image-id :micro node-path))
-        image (image-id images)]
+  (logging/tracef
+   "Creating node from image: %s and hardware model %s" image model)
+  (let [machine (manager/instance*
+                 server machine-name image model node-path)]
+    (manager/set-extra-data machine image-meta-tag (pr-str image))
     (manager/set-extra-data machine group-name-tag group-name)
-    (manager/set-extra-data machine os-family-tag (name (:os-family image)))
-    (manager/set-extra-data machine os-version-tag (:os-version image))
-    ;; (manager/add-startup-command machine 1 init-script )
     (manager/start
      machine
-     :session-type (or
-                    (:session-type node-spec)
-                    *vm-session-type*))
-    (logging/trace "Wait to allow boot")
-    (Thread/sleep 15000)                ; wait minimal time for vm to boot
+     :session-type (or ;; todo: move this decision upstream, when it
+                    ;; is first possible.
+                    (get-in node-spec [:image :session-type])
+                    default-vm-session-type))
+    ;;    (logging/trace "Wait to allow boot")
+    ;;    (Thread/sleep 15000)                ; wait minimal time for vm to boot
     (logging/trace "Waiting for ip")
     (when (string/blank? (wait-for-ip machine))
-      (condition/raise
-       :type :no-ip-available
-       :message "Could not determine IP address of new node"))
+      (manager/destroy machine)
+      (throw+
+       {:type :no-ip-available
+        :message "Could not determine IP address of new node"}))
+    ;; wait for services to come up, specially SSH
+    ;; todo: provide some form of exponential backoff try with at
+    ;; something like 3 attempts. A single wait for 4s might not
+    ;; work under high contention (e.g. starting many nodes)
     (Thread/sleep 4000)
     (logging/tracef "Bootstrapping %s" (manager/get-ip machine))
-    (script/with-script-context
-      (action-plan/script-template-for-server {:image image})
-      (stevedore/with-script-language :pallet.stevedore.bash/bash
-        (let [user (if (:username image)
-                     (pallet.utils/make-user
-                      (:username image)
-                      :password (:password image)
-                      :no-sudo (:no-sudo image)
-                      :sudo-password (:sudo-password image))
-                     user)]
-          (execute/remote-sudo
-           (manager/get-ip machine) init-script user
-           {:pty (not (#{:arch :fedora} (:os-family image)))}))))
-    machine))
+    (let [node (VmfestNode. machine compute-service)]
+      (script/with-script-context
+        (action-plan/script-template-for-server {:image image})
+        (stevedore/with-script-language :pallet.stevedore.bash/bash
+          (let [user (if (:username image)
+                       (pallet.utils/make-user
+                        (:username image)
+                        :password (:password image)
+                        :no-sudo (:no-sudo image)
+                        :sudo-password (:sudo-password image))
+                       user)
+                [{:keys [out exit]} session]
+                (ssh-script-on-target
+                 {:server {:node node} :user user}
+                 {:node-value-path (gensym "vmfest")}
+                 :script/bash
+                 init-script)]
+            (when-not (zero? exit)
+              (manager/destroy machine)
+              (throw+
+               {:message (format "Bootstrap failed: %s" out)
+                :type :pallet/bootstrap-failure
+                :group-spec node-spec})))))
+      node)))
+
+(defn- always-match
+  [image-properties kw arg]
+  true)
 
 (defn- equality-match
   [image-properties kw arg]
+  (logging/tracef
+   "matching %s=%s for %s in %s" (image-properties kw) arg kw image-properties)
   (= (image-properties kw) arg))
 
 (defn- regexp-match
   [image-properties kw arg]
   (when-let [value (image-properties kw)]
+    (logging/tracef
+     "matching %s=%s for %s in image: %s" kw value arg image-properties)
     (re-matches (re-pattern arg) value)))
 
-(def template-matchers
+(def
+  ^{:doc "Maps the template field with a function that will determine if the
+          template matches."
+    :private true}
+  template-matchers
   {:os-version-matches (fn [image-properties kw arg]
-                         (regexp-match image-properties :os-version arg))})
+                         (regexp-match image-properties :os-version arg))
+   :image-name-matches (fn [image-properties kw arg]
+                         (regexp-match image-properties :image-name arg))
+   :image-id-matches (fn [image-properties kw arg]
+                       (regexp-match image-properties :image-id arg))
+   :image-description-matches (fn [image-properties kw arg]
+                                (regexp-match
+                                 image-properties :description arg))
+   :os-family (fn [image-properties kw arg]
+                (equality-match image-properties :os-family arg))
+   :os-64-bit (fn [image-properties kw arg]
+                (equality-match image-properties :os-64-bit arg))})
 
-(defn image-from-template
+(defn- all-images-from-template
+  "Finds all the images that match a template"
+  [images template]
+  (->>
+   images
+   (filter
+    (fn image-matches? [[image-name image-properties]]
+      ;; check wether all the template matchers present in the
+      ;; template match and defined in 'template-matchers' match
+      ;; with the image
+      (every?
+       ;; either the key in the template has a value in
+       ;; 'template-matchers' or the template will always match,
+       ;; thus ignoring the key. Basically only try to match for
+       ;; entries in the template that have a matcher and ignore
+       ;; the rest.
+       #(or
+         (((first %) template-matchers always-match)
+          image-properties (first %) (second %))
+         (logging/debugf
+          "Template match failed for image %s on %s"
+          (:image-id image-properties) (first %)))
+       template)))
+   (into {})))
+
+(defn- image-from-template
   "Use the template to select an image from the image map."
   [images template]
-  (let [template-to-match (utils/dissoc-keys
-                           template
-                           (concat
-                            [:image-id :inbound-ports]
-                            (keys hardware-config)
-                            (keys hardware-parameters)))]
-    (logging/debugf "Looking for %s in %s" template-to-match images)
-    (if-let [image-id (:image-id template)]
-      (image-id images)
-      (->
-       (filter
-        (fn image-matches? [[image-name image-properties]]
-          (every?
-           #(((first %) template-matchers equality-match)
-             image-properties (first %) (second %))
-           template-to-match))
-        images)
-       ffirst))))
+  (logging/debugf "Looking for %s in %s" template images)
+  (if-let [image-id (:image-id template)]
+    image-id
+    (ffirst (all-images-from-template images template))))
 
 (defn serial-create-nodes
   "Create all nodes for a group in parallel."
-  [target-machines-to-create server node-path node-spec images image-id
-   machine-models group-name init-script user]
+  [target-machines-to-create compute-service server node-path node-spec image
+   machine-model group-name init-script user]
   (doall
    (for [name target-machines-to-create]
      (create-node
-      server node-path node-spec name images image-id machine-models group-name
-      init-script user))))
+      compute-service server node-path node-spec name image machine-model
+      group-name init-script user))))
 
 (defn parallel-create-nodes
   "Create all nodes for a group in parallel."
-  [target-machines-to-create server node-path node-spec images image-id
-   machine-models group-name init-script user]
+  [target-machines-to-create compute-service server node-path node-spec image
+   machine-model group-name init-script user]
   ;; the doseq ensures that all futures are completed before
   ;; returning
   (->>
    (for [name target-machines-to-create]
      (future
        (create-node
-        server node-path node-spec name images image-id
-        machine-models group-name init-script user)))
+        compute-service server node-path node-spec name image machine-model
+        group-name init-script user)))
    doall ;; doall forces creation of all futures before any deref
    futures/add
    (map #(futures/deref-with-logging % "Start of node"))
@@ -312,11 +498,11 @@
 
 (def
   ^{:dynamic true
-    :doc (str "The buffer size (in bytes) for the piped stream used to implement
+    :doc "The buffer size (in bytes) for the piped stream used to implement
     the :stream option for :out. If your ssh commands generate a high volume of
     output, then this buffer size can become a bottleneck. You might also
     increase the frequency with which you read the output stream if this is an
-    issue.")}
+    issue."}
   *piped-stream-buffer-size* (* 1024 1024))
 
 (defn- piped-streams
@@ -324,7 +510,7 @@
   (let [os (java.io.PipedOutputStream.)]
     [os (java.io.PipedInputStream. os *piped-stream-buffer-size*)]))
 
-(defn gzip [from to]
+(defn- gzip [from to]
   (with-open [input (io/input-stream from)
               output (java.util.zip.GZIPOutputStream. (io/output-stream to))]
     (io/copy input output)))
@@ -335,28 +521,79 @@
   (publish-image [service image blobstore container {:keys [path] :as options}]
     "Publish the image to the specified blobstore container")
   (has-image? [service image-key]
-    "Predicate to test for the presence of a specific image"))
+    "Predicate to test for the presence of a specific image")
+  (find-images [service template]
+    "Determine the best match image for a given image template"))
+
+(defn- hardware-model-from-template [model template network-type interface]
+  (merge model
+         {:memory-size (or (:min-ram template)
+                           (:memory-size model))
+          :cpu-count (or (:min-cores template)
+                         (:cpu-count model))
+          :network-type network-type
+          ;; todo: allow overriding the interface here
+          }))
+
+(defn- selected-hardware-model
+  [{:keys [hardware-id hardware-model] :as template} models
+   default-network-type default-local-interface default-bridged-interface]
+  (let [model
+        (cond
+         ;; if a model is specified, we take it
+         hardware-model (merge (second (first models)) hardware-model)
+         ;; if not, is a model key provided?
+         hardware-id (hardware-id models)
+         ;; we'll build the model from the template then.
+         :else (hardware-model-from-template
+                 ;; use the first model in the list
+                (second (first models))
+                template
+                default-network-type
+                ;; pass the right interface for network-type
+                (if (= :local default-network-type)
+                  default-local-interface
+                  default-bridged-interface)))
+        ;; if no network-type is speficied at this point, use the
+        ;; default
+        network-type (or (:network-type model) default-network-type)]
+    (merge model
+           ;; add the right network interface configuration for the final
+           ;; network-type
+           {:network (if (= network-type :local)
+                       ;; local networking
+                       [{:attachment-type :host-only
+                         :host-interface default-local-interface}
+                        {:attachment-type :nat}]
+                       ;; bridged networking
+                       [{:attachment-type :bridged
+                         :host-interface default-bridged-interface}])})))
+
 
 (deftype VmfestService
-    [server images locations environment]
+    [server images locations network-type local-interface bridged-interface
+     environment models]
   pallet.compute/ComputeService
-  (nodes [compute-service] (manager/machines server))
+  (nodes [compute-service]
+    (map #(VmfestNode. % compute-service) (manager/machines server)))
 
   (ensure-os-family [compute-service group] group)
 
   (run-nodes
-    [compute-service group-spec node-count user init-script]
+    [compute-service group-spec node-count user init-script options]
     (try
       (let [template (->> [:image :hardware :location :network :qos]
                           (select-keys group-spec)
                           vals
                           (reduce merge))
-            _ (logging/infof "Template %s" template)
-            image-id (or (image-from-template @images template)
-                         (throw (RuntimeException.
-                                 (format "No matching image for %s in"
-                                         (pr-str (:image group-spec))
-                                         (@images)))))
+            _ (logging/debugf "run-nodes with template %s" template)
+            image (or (image-from-template
+                       @images template)
+                      (throw (RuntimeException.
+                              (format
+                               "No matching image for %s in %s"
+                               (pr-str (:image group-spec))
+                               @images))))
             group-name (name (:group-name group-spec))
             machines (filter
                       #(session/with-no-session % [vb-m] (.getAccessible vb-m))
@@ -382,20 +619,33 @@
                                               target-machine-names)
             target-machines-to-create (clojure.set/difference
                                        target-machine-names
-                                       target-machines-already-existing)]
+                                       target-machines-already-existing)
+            create-nodes-fn (get-in environment
+                                    [:algorithms :vmfest :create-nodes-fn]
+                                    parallel-create-nodes)
+            final-hardware-model (selected-hardware-model
+                                  template
+                                  models
+                                  network-type
+                                  local-interface
+                                  bridged-interface)]
         (logging/debug (str "current-machine-names " current-machine-names))
         (logging/debug (str "target-machine-names " target-machine-names))
         (logging/debug (str "target-machines-already-existing "
                             target-machines-already-existing))
         (logging/debug (str "target-machines-to-create"
                             target-machines-to-create))
-
-        ((get-in environment [:algorithms :vmfest :create-nodes-fn]
-                 parallel-create-nodes)
-         target-machines-to-create server (:node-path locations)
-         group-spec @images image-id
-         {:micro (machine-model template)}
-         group-name init-script user))))
+        (logging/debugf "Selected image: %s" image)
+        (create-nodes-fn
+          target-machines-to-create
+          compute-service
+          server
+          (:node-path locations)
+          group-spec
+          (image @images)
+          final-hardware-model
+          group-name
+          init-script user))))
 
   (reboot
     [compute nodes]
@@ -411,11 +661,13 @@
     [compute node _]
     ;; todo: wait for completion
     (logging/infof "Shutting down %s" (pr-str node))
-    (manager/power-down node)
-    (if-let [state (manager/wait-for-machine-state node [:powered-off] 300000)]
-      (logging/infof "Machine state is %s" state)
-      (logging/warn "Failed to wait for power down completion"))
-    (manager/wait-for-lockable-session-state node 2000))
+    (let [machine (.node node)]
+      (manager/power-down machine)
+      (if-let [state (manager/wait-for-machine-state
+                      machine [:powered-off] 300000)]
+        (logging/infof "Machine state is %s" state)
+        (logging/warn "Failed to wait for power down completion"))
+      (manager/wait-for-lockable-session-state machine 2000)))
 
   (shutdown
     [compute nodes user]
@@ -427,7 +679,7 @@
     (let [nodes (locking compute ;; avoid disappearing machines
                   (filter
                    #(and
-                     (compute/running? %)
+                     (node/running? %)
                      (= group-name (manager/get-extra-data % group-name-tag)))
                    (manager/machines server)))]
       (doseq [machine nodes]
@@ -437,7 +689,7 @@
     [compute node]
     {:pre [node]}
     (compute/shutdown-node compute node nil)
-    (manager/destroy node))
+    (manager/destroy (.node node)))
 
   (images [compute]
     @images)
@@ -458,9 +710,9 @@
         (let [medium (virtualbox/find-medium vbox (:uuid image))
               file (java.io.File. (.getLocation medium))]
           (filesystem/with-temp-file [gzip-file]
-            (logging/infof "gzip to %s" (.getPath gzip-file))
+            (logging/debugf "gzip to %s" (.getPath gzip-file))
             (gzip file gzip-file)
-            (logging/infof "put gz %s" (.getPath gzip-file))
+            (logging/debugf "put gz %s" (.getPath gzip-file))
             (try
               (blobstore/put
                blobstore container (or path (str (.getName file) ".gz"))
@@ -476,42 +728,129 @@
                  "Could not find image %s. Known images are %s."
                  image-kw (keys @images))]
         (logging/error msg)
-        (condition/raise
+        (throw+
          {:type :pallet/unkown-image
           :image image-kw
           :known-images (keys @images)
           :message msg}))))
   (has-image? [_ image-kw]
-    ((or @images {}) image-kw)))
+    ((or @images {}) image-kw))
+  (find-images [_ template]
+    (all-images-from-template @images template)))
 
-(defn add-image [compute url & {:as options}]
-  (install-image compute url options))
+(defn add-image
+  "Add an image to the images available. The image will be installed from the
+   specified `url-string`."
+  [compute url-string & {:as options}]
+  (install-image compute url-string options))
 
-;;;; Compute service
-(defmethod implementation/service :virtualbox
+(def base-model
+  {:memory-size 512
+   :cpu-count 1
+   :storage [{:name "IDE Controller"
+              :bus :ide
+              :devices [nil nil nil nil]}]
+   :boot-mount-point ["IDE Controller" 0]})
+
+(def default-models
+  {:micro base-model
+   :small (merge base-model {:memory-size 1024 :cpu-count 1})
+   :medium (merge base-model {:memory-size 2048 :cpu-count 2})
+   :large (merge base-model {:memory-size (* 4 1024) :cpu-count 4})})
+
+(defn- process-images
+  "preformats the image maps to complete some of the fields"
+  [images]
+  (zipmap (keys images)
+          (map (fn [[k v]] (assoc v
+                            :image-name (name k)
+                            :image-id (name k)))
+               images)))
+
+;;;; Compute service SPI
+(defn supported-providers []
+  ["vmfest"])
+
+(defmethod implementation/service :vmfest
   [_ {:keys [url identity credential images node-path model-path locations
-             environment]
+             environment default-network-type default-bridged-interface
+             default-local-interface hardware-models]
       :or {url "http://localhost:18083/"
            identity "test"
            credential "test"
            model-path (manager/default-model-path)
-           node-path (manager/default-node-path)}
+           node-path (manager/default-node-path)
+           default-network-type :local}
       :as options}]
   (let [locations (or locations
                       {:local {:node-path node-path :model-path model-path}})
-        images (merge (manager/load-models :model-path model-path) images)]
+        images (process-images
+                (merge (manager/load-models :model-path model-path) images))
+        models (merge default-models
+                      ;; new hardware models inherit from the
+                      ;; base-model
+                      (zipmap (keys hardware-models)
+                              (map
+                               (partial merge base-model)
+                               (vals hardware-models))))
+        available-host-interfaces (manager/find-usable-network-interface
+                                   (manager/server url identity credential))
+        bridged-iface (or
+                       default-bridged-interface
+                       (do
+                         (logging/info
+                          (str
+                           "No :default-bridged-interface defined. "
+                           "Will chose from these options: "
+                           (apply
+                            str (interpose ", " available-host-interfaces))))
+                         (first available-host-interfaces)))
+        local-iface (or default-local-interface
+                        (do
+                          (logging/info
+                           "No Local Interface defined. Using vboxnet0")
+                          "vboxnet0"))] ;; todo. Automatically discover this
+    (logging/infof "Loaded images: %s" (keys images))
+    (logging/infof
+     "Using '%s' networking via interface '%s' as defaults for new machines"
+     (name default-network-type)
+     (if (= default-network-type :local)
+       local-iface
+       bridged-iface))
+    (doseq [[name model] models]
+      (logging/debugf "loaded model %s = %s" name model))
     (VmfestService.
      (vmfest.virtualbox.model.Server. url identity credential)
      (atom images)
      (val (first locations))
-     environment)))
+     default-network-type
+     local-iface
+     bridged-iface
+     environment
+     models)))
 
-(defmethod clojure.core/print-method vmfest.virtualbox.model.Machine
+(defmethod clojure.core/print-method VmfestNode
   [node writer]
-  (.write
-   writer
-   (format
-    "%14s\t %14s\t public: %s"
-    (try (compute/hostname node) (catch Throwable e "unknown"))
-    (try (compute/group-name node) (catch Throwable e "unknown"))
-    (try (compute/primary-ip node) (catch Throwable e "unknown")))))
+  (let [machine (.node node)
+        accessible (try (session/with-vbox (:server machine) [_ vbox]
+                          (session/with-no-session machine [m]
+                            (machine/get-attribute m :accessible?)))
+                        (catch Exception _))]
+    (cond
+      (not accessible)
+      (.write writer "Unaccessible vmfest node")
+
+      (not
+       (->>
+        (compute/nodes (.service node))
+        (some #(= (:id machine) (:id (.node %))))))
+      (.write writer "Unregistered vmfest node")
+
+      :else
+      (.write
+       writer
+       (format
+        "%14s\t %14s\t public: %s"
+        (try (node/hostname node) (catch Throwable e "unknown"))
+        (try (node/group-name node) (catch Throwable e "unknown"))
+        (try (node/primary-ip node) (catch Throwable e "unknown")))))))
