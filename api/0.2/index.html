@@ -1,0 +1,190 @@
+<html lang="en">
+  <head>
+    <title>Pallet vmfest provider 0.2 API documentation</title>
+    <link href="css/default.css" type="text/css" rel="stylesheet" />
+    <script type="text/javascript" src="js/jquery.min.js"></script>
+    <script type="text/javascript" src="js/page_effects.js"></script>
+  </head>
+  <body>
+    <header>
+      <div id="header">
+        <h1 class="project-title">Pallet vmfest provider 0.2 API documentation</h1>
+      </div>
+    </header>
+    <navigation>
+      <div id="namespaces" class="sidebar">
+        <h3>Namespaces</h3>
+        <ul class="ns-links">
+          <li class="ns-link"><a href="pallet.compute.vmfest.html">pallet.compute.vmfest</a></li><li class="ns-link"><a href="pallet.task.vmfest-script.html">pallet.task.vmfest-script</a></li>
+        </ul>
+      </div>
+    </navigation>
+    <article>
+      <div id="content" class="namespace-index">
+        <h2 class="project-title">Pallet vmfest provider 0.2 API documentation</h2>
+        <div class="doc"><p>A provider for using Pallet with Vmfest.</p>
+
+<p>Vmfest is a clojure library for using virtualbox.</p>
+
+<p>Pallet is a platform for agile and programmatic automation of infrastructure
+in the cloud, on server racks or directly on virtual machines. Pallet
+provides cloud provider and operating system independence, and allows for an
+unprecedented level of customization.</p>
+</div>
+        <div class="project-namespaces">
+          <div class="namespace">
+            <h3 class="ns-link"><a href="pallet.compute.vmfest.html">pallet.compute.vmfest</a></h3>
+            <div class="doc"><p>The VMFest provider allows Pallet to use VirtualBox via VMFest.</p>
+
+<h2>Example Configuration</h2>
+
+<p>An example service configuration in <code>~/.pallet/config.clj</code></p>
+
+<pre><code>:vb {:provider "virtualbox"
+     :default-local-interface "vboxnet0"
+     :default-bridged-interface "en1: Wi-Fi 2 (AirPort)"
+     :default-network-type :local
+     :hardware-models
+     {:test
+      {:memory-size 768
+       :cpu-count 1}
+      :test-2
+      {:memory-size 512
+       :network-type :bridged}
+     :images {:centos-5-3 {:description "CentOS 5.3 32bit"
+                           :uuid "4697bdf7-7acf-4a20-8c28-e20b6bb58e25"
+                           :os-family :centos
+                           :os-version "5.3"
+                           :os-type-id "RedHat"}
+              :ubuntu-10-04 {:description "Ubuntu 10.04 32bit"
+                             :uuid "8a31e3aa-0d46-41a5-936d-25130dcb16b7"
+                             :os-family :ubuntu
+                             :os-version "10.04"
+                             :os-type-id "Ubuntu"
+                             :username
+                             :password}}
+     :model-path "/Volumes/My Book/vms/disks"
+     :node-path "/Volumes/My Book/vms/nodes"}
+</code></pre>
+
+<p>The uuid's can be found using <code>vboxmanage</code></p>
+
+<pre><code>vboxmanage list hdds
+</code></pre>
+
+<p> or it can be the path to time image file itself (.vdi).</p>
+
+<p>The images are disks that are immutable.  The virtualbox extensions need
+to be installed on the image.</p>
+
+<h2>VMs' hardware configuration</h2>
+
+<p>The hardware model to be run by pallet can be defined in the node template or
+built from the template and a default model. The model will determine by the
+first match in the following options</p>
+
+<ul>
+<li>The template has a <code>:hardware-model</code> entry with a vmfest hardware map.
+The VMs created will follow this model
+  e.g. <code>{... :hardware-model {:memory-size 1400 ...}}</code></li>
+<li>The template has a <code>:hardware-id</code> entry. The value for this entry should
+correspond to an entry in the hardware-models map (or one of the entries
+that pallet offers by default.
+  e.g. <code>{... :hardware-id :small ...}</code></li>
+<li>The template has no hardware entry. Pallet will use the first model
+in the hardware-models map to build an image that matches the rest of
+the relevant entries in the map.</li>
+</ul>
+
+<p>By default, pallet offers the following specializations of this base model:</p>
+
+<pre><code>{:memory-size 512
+ :cpu-count 1
+ :storage [{:name "IDE Controller"
+            :bus :ide
+            :devices [nil nil nil nil]}]
+ :boot-mount-point ["IDE Controller" 0]})
+</code></pre>
+
+<p>The defined machines correspond to the above with some overrides:</p>
+
+<pre><code>{:micro {:memory 512 :cpu-count 1}
+ :small {:memory-size 1024 :cpu-count 1}
+ :medium {:memory-size 2048 :cpu-count 2}
+ :large {:memory-size (* 4 1024) :cpu-count 4}
+</code></pre>
+
+<p>You can define your own hardware models that will be added to the default
+ones, or in the case that they're named the same, they will replace the
+default ones.  Custom models will also extend the base model above.</p>
+
+<h2>Networking</h2>
+
+<p>Pallet offers two networking models: local and bridged.</p>
+
+<p>In Local mode pallet creates two network interfaces in the VM, one for an
+internal network (e.g. vboxnet0), and the other one for a NAT network. This
+option doesn't require VM's to obtain an external IP address, but requires
+the image booted to bring up at least eth0 and eth1, so this method won't
+work on all images.</p>
+
+<p>In Bridged mode pallet creates one interface in the VM that is bridged on a
+phisical network interface. For pallet to work, this physical interface must
+have an IP address that must be hooked in an existing network. This mode
+works with all images.</p>
+
+<p>The networking configuration for each VM created is determined by (in order):</p>
+
+<ul>
+<li>the template contains a <code>:hardware-model</code> map with a <code>:network-type</code>
+entry</li>
+<li>the template contains a <code>:network-type</code> entry</li>
+<li>the service configuration contains a <code>:default-network-type</code> entry</li>
+<li><code>:local</code></li>
+</ul>
+
+<p>Each networking type must attach to a network interface, be it local or
+bridged.  The decision about which network interface to attach is done in the
+following way (in order):</p>
+
+<ul>
+<li>For bridged networking:
+<ul><li>A <code>:default-bridged-interface</code> entry exists in the service definition</li>
+<li>Pallet will try to find a suitable interface for the machine.</li>
+<li>if all fails, VMs will fail to start</li></ul></li>
+<li>For local networking:
+<ul><li>A <code>:default-local-interface</code> entry exists in the service definition</li>
+<li>vboxnet0 (created by default by VirtualBox)</li></ul></li>
+</ul>
+
+<h2>Links</h2>
+
+<ul>
+<li><a href="https://github.com/tbatchelli/vmfest">VMFest</a></li>
+<li><a href="https://virtualbox.org/">VirtualBox</a></li>
+<li><a href="http://palletops.com/">Pallet</a></li>
+</ul>
+</div>
+            <div class="index ns-var-links">
+              <p>Public variables and functions:</p>
+              <ul>
+                <li class="ns-var-link"><a href="pallet.compute.vmfest.html#var-*piped-stream-buffer-size*">*piped-stream-buffer-size*</a></li><li class="ns-var-link"><a href="pallet.compute.vmfest.html#var-add-image">add-image</a></li><li class="ns-var-link"><a href="pallet.compute.vmfest.html#var-find-images">find-images</a></li><li class="ns-var-link"><a href="pallet.compute.vmfest.html#var-has-image%3F">has-image?</a></li><li class="ns-var-link"><a href="pallet.compute.vmfest.html#var-install-image">install-image</a></li><li class="ns-var-link"><a href="pallet.compute.vmfest.html#var-medium-formats">medium-formats</a></li><li class="ns-var-link"><a href="pallet.compute.vmfest.html#var-os-families">os-families</a></li><li class="ns-var-link"><a href="pallet.compute.vmfest.html#var-parallel-create-nodes">parallel-create-nodes</a></li><li class="ns-var-link"><a href="pallet.compute.vmfest.html#var-publish-image">publish-image</a></li><li class="ns-var-link"><a href="pallet.compute.vmfest.html#var-serial-create-nodes">serial-create-nodes</a></li>
+              </ul>
+            </div>
+          </div><div class="namespace">
+            <h3 class="ns-link"><a href="pallet.task.vmfest-script.html">pallet.task.vmfest-script</a></h3>
+            <div class="doc"><p>A task for running vmfest scripts</p>
+</div>
+            <div class="index ns-var-links">
+              <p>Public variables and functions:</p>
+              <ul>
+                <li class="ns-var-link"><a href="pallet.task.vmfest-script.html#var-vmfest-script">vmfest-script</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </article>
+  </body>
+
+</html>
