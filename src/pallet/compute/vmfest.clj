@@ -361,7 +361,8 @@
     ;;    (Thread/sleep 15000)                ; wait minimal time for vm to boot
     (logging/trace "Waiting for ip")
     (when (string/blank? (wait-for-ip machine))
-      (manager/destroy machine)
+      (when (:destroy-on-bootstrap-fail node-spec true)
+        (manager/destroy machine))
       (throw+
        {:type :no-ip-available
         :message "Could not determine IP address of new node"}))
@@ -389,7 +390,8 @@
                  :script/bash
                  init-script)]
             (when-not (zero? exit)
-              (manager/destroy machine)
+              (when (:destroy-on-bootstrap-fail node-spec true)
+                (manager/destroy machine))
               (throw+
                {:message (format "Bootstrap failed: %s" out)
                 :type :pallet/bootstrap-failure
