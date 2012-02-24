@@ -284,17 +284,20 @@
 (defn- wait-for-ip
   "Wait for the machines IP to become available by the provided amount of
   milliseconds, or 5min by default."
-  ([machine] (wait-for-ip machine 300000))
-  ([machine timeout]
+  ;; TODO: find a way to signal when an ip is not available
+  ([machine slot] (wait-for-ip machine slot 300000))
+  ([machine slot timeout]
+     (logging/debugf "Waiting %s ms for the IP in slot %s of %s to come up."
+                     timeout slot (manager/get-machine-attribute machine :name))
      (let [timeout (+ (current-time-millis) timeout)]
        (loop []
-         (let [ip (try (manager/get-ip machine)
+         (let [ip (try (manager/get-ip machine :slot slot)
                        (catch RuntimeException e
-                         (logging/warnf
+                         (logging/warnf e
                           "wait-for-ip: Machine %s not started yet..."
                           machine))
                        (catch Exception e
-                         (logging/warnf
+                         (logging/warnf e
                           "wait-for-ip: Machine %s is not accessible yet..."
                           machine)))]
            (if (and (string/blank? ip) (< (current-time-millis) timeout))
@@ -337,6 +340,30 @@
   (let [nodes (manager/machines compute-service)]
     (map node-data nodes)))
 
+(defn- connected-network-slots
+  "Returns the slot numbers in the hardware model that are to be connected to a
+ network"
+  [hardware-model]
+  (let [network-config (:network hardware-model)
+        numbered-slots (partition 2 (interleave (range (count network-config))
+                                         network-config))]
+    (filter (comp not nil?)
+            (for [[slot-num slot] numbered-slots]
+              (if (and (not (nil? slot))
+                       (not (= false (:enabled slot)))
+                       (not (= false (:cable-connected slot))))
+                slot-num
+                nil)))))
+
+(defn- wait-for-all-ips
+  "Waits the interfaces in the network slots to acquire an IP address.
+  If any of them fails to do so, it will return false, otherwise it
+  will return true"
+  [machine slots]
+  (let [ip-seq
+        (doall (map #( wait-for-ip machine %) slots))]
+    (empty? (filter string/blank? ip-seq))))
+
 (defn- create-node
   "Instantiates a compute node on vmfest and runs the supplied init script.
 
@@ -360,12 +387,15 @@
     ;;    (logging/trace "Wait to allow boot")
     ;;    (Thread/sleep 15000)                ; wait minimal time for vm to boot
     (logging/trace "Waiting for ip")
-    (when (string/blank? (wait-for-ip machine))
-      (when (:destroy-on-bootstrap-fail node-spec true)
-        (manager/destroy machine))
-      (throw+
-       {:type :no-ip-available
-        :message "Could not determine IP address of new node"}))
+    ;; TODO: Pass the slots to look for ips...
+    ;; TODO: Figure out how to determine if tetting the ip has been
+    ;; successful.
+    (let [connected-slots (connected-network-slots model)]
+      (when-not (wait-for-all-ips machine connected-slots)
+        (manager/destroy machine)
+        (throw+
+         {:type :no-ip-available
+          :message "Could not determine IP address of new node"})))
     ;; wait for services to come up, specially SSH
     ;; todo: provide some form of exponential backoff try with at
     ;; something like 3 attempts. A single wait for 4s might not
