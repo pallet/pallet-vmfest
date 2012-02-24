@@ -597,6 +597,10 @@
                        [{:attachment-type :bridged
                          :host-interface default-bridged-interface}])})))
 
+(defn image-template-from-group-spec [group-spec]
+  (->> [:image :hardware :location :network :qos]
+       (select-keys group-spec) vals (reduce merge)))
+
 
 (deftype VmfestService
     [server images locations network-type local-interface bridged-interface
@@ -605,15 +609,24 @@
   (nodes [compute-service]
     (map #(VmfestNode. % compute-service) (manager/machines server)))
 
-  (ensure-os-family [compute-service group] group)
+  (ensure-os-family [compute-service group]
+    (logging/debugf "ensure-os-family called with group = %s" group)
+    ;; if we are looking for a particular image via image-id, then we
+    ;; need to fetch the meta of that image and merge its contents
+    ;; with the contents of the template.
+    (if-let  [image-id (keyword (-> group :image :image-id))]
+      (let [image-meta (image-id @images)]
+        (println
+         (format "ensure-os-family: \ngroup = %s \nimage-meta = %s"
+                 group image-meta))
+        (update-in group [:image] #(merge image-meta %)))
+      group))
 
   (run-nodes
     [compute-service group-spec node-count user init-script options]
+    (logging/debug "vmfest/run-nodes called!!!!")
     (try
-      (let [template (->> [:image :hardware :location :network :qos]
-                          (select-keys group-spec)
-                          vals
-                          (reduce merge))
+      (let [template (image-template-from-group-spec group-spec)
             _ (logging/debugf "run-nodes with template %s" template)
             image (or (image-from-template
                        @images template)
