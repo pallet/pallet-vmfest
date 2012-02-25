@@ -36,9 +36,17 @@
         <groupId>org.cloudhoist.plugin</groupId>
         <artifactId>zi</artifactId>
         <configuration>
+          <marginaliaTargetDirectory>doc</marginaliaTargetDirectory>
           <codoxTargetDirectory>doc/api/${pallet-vmfest.doc.version}</codoxTargetDirectory>
           <codoxApiVersion>${pallet-vmfest.doc.version}</codoxApiVersion>
           <codoxWriter>codox-md.writer/write-docs</codoxWriter>
+        </configuration>
+      </plugin>
+      <plugin>
+        <artifactId>maven-site-plugin</artifactId>
+        <version>3.0</version>
+        <configuration>
+          <skip>true</skip>
         </configuration>
       </plugin>
     </plugins>
@@ -130,9 +138,10 @@
   </repositories>
 
   <properties>
-    <vmfest.version>0.2.4-beta.1</vmfest.version>
+    <vmfest.version>0.2.4-beta.3</vmfest.version>
     <pallet.version>0.7.0-beta.1</pallet.version>
     <pallet-vmfest.doc.version>0.2</pallet-vmfest.doc.version>
+    <zi.version>0.4.5</zi.version>
   </properties>
 
 </project>

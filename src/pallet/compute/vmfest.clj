@@ -1,15 +1,12 @@
 (ns pallet.compute.vmfest
-  "VMFest Provider
-   ===============
-
-   The provider allows Pallet to use VirtualBox via VMFest.
+  "The VMFest provider allows Pallet to use VirtualBox via VMFest.
 
    Example Configuration
    ---------------------
 
-   An example service configuration in ~/.pallet/config.clj
+   An example service configuration in `~/.pallet/config.clj`
 
-       :vb {:provider \"virtualbox\"
+       :vb {:provider \"vmfest\"
             :default-local-interface \"vboxnet0\"
             :default-bridged-interface \"en1: Wi-Fi 2 (AirPort)\"
             :default-network-type :local
@@ -35,7 +32,7 @@
             :model-path \"/Volumes/My Book/vms/disks\"
             :node-path \"/Volumes/My Book/vms/nodes\"}
 
-   The uuid's can be found using vboxmanage
+   The uuid's can be found using `vboxmanage`
 
        vboxmanage list hdds
 
@@ -51,16 +48,16 @@
    built from the template and a default model. The model will determine by the
    first match in the following options
 
-     - The template has a `:hardware-model` entry with a vmfest hardware map.
-       The VMs created will follow this model
-           e.g. `{... :hardware-model {:memory-size 1400 ...}}`
-     - The template has a `:hardware-id` entry. The value for this entry should
-       correspond to an entry in the hardware-models map (or one of the entries
-       that pallet offers by default.
-           e.g. `{... :hardware-id :small ...}`
-     - The template has no hardware entry. Pallet will use the first model
-       in the hardware-models map to build an image that matches the rest of
-       the relevant entries in the map.
+   - The template has a `:hardware-model` entry with a vmfest hardware map.
+     The VMs created will follow this model
+         e.g. `{... :hardware-model {:memory-size 1400 ...}}`
+   - The template has a `:hardware-id` entry. The value for this entry should
+     correspond to an entry in the hardware-models map (or one of the entries
+     that pallet offers by default.
+         e.g. `{... :hardware-id :small ...}`
+   - The template has no hardware entry. Pallet will use the first model
+     in the hardware-models map to build an image that matches the rest of
+     the relevant entries in the map.
 
    By default, pallet offers the following specializations of this base model:
 
@@ -100,23 +97,23 @@
 
    The networking configuration for each VM created is determined by (in order):
 
-     - the template contains a `:hardware-model` map with a `:network-type`
-       entry
-     - the template contains a `:network-type` entry
-     - the service configuration contains a `:default-network-type` entry
-     - `:local`
+   - the template contains a `:hardware-model` map with a `:network-type`
+     entry
+   - the template contains a `:network-type` entry
+   - the service configuration contains a `:default-network-type` entry
+   - `:local`
 
    Each networking type must attach to a network interface, be it local or
    bridged.  The decision about which network interface to attach is done in the
    following way (in order):
 
-     - For bridged networking:
-         - A `:default-bridged-interface` entry exists in the service definition
-         - Pallet will try to find a suitable interface for the machine.
-         - if all fails, VMs will fail to start
-     - For local networking:
-         - A `:default-local-interface` entry exists in the service definition
-         - vboxnet0 (created by default by VirtualBox)
+   - For bridged networking:
+       - A `:default-bridged-interface` entry exists in the service definition
+       - Pallet will try to find a suitable interface for the machine.
+       - if all fails, VMs will fail to start
+   - For local networking:
+       - A `:default-local-interface` entry exists in the service definition
+       - vboxnet0 (created by default by VirtualBox)
 
    Links
    -----
@@ -287,17 +284,20 @@
 (defn- wait-for-ip
   "Wait for the machines IP to become available by the provided amount of
   milliseconds, or 5min by default."
-  ([machine] (wait-for-ip machine 300000))
-  ([machine timeout]
+  ;; TODO: find a way to signal when an ip is not available
+  ([machine slot] (wait-for-ip machine slot 300000))
+  ([machine slot timeout]
+     (logging/debugf "Waiting %s ms for the IP in slot %s of %s to come up."
+                     timeout slot (manager/get-machine-attribute machine :name))
      (let [timeout (+ (current-time-millis) timeout)]
        (loop []
-         (let [ip (try (manager/get-ip machine)
+         (let [ip (try (manager/get-ip machine :slot slot)
                        (catch RuntimeException e
-                         (logging/warnf
+                         (logging/warnf e
                           "wait-for-ip: Machine %s not started yet..."
                           machine))
                        (catch Exception e
-                         (logging/warnf
+                         (logging/warnf e
                           "wait-for-ip: Machine %s is not accessible yet..."
                           machine)))]
            (if (and (string/blank? ip) (< (current-time-millis) timeout))
@@ -340,6 +340,30 @@
   (let [nodes (manager/machines compute-service)]
     (map node-data nodes)))
 
+(defn- connected-network-slots
+  "Returns the slot numbers in the hardware model that are to be connected to a
+ network"
+  [hardware-model]
+  (let [network-config (:network hardware-model)
+        numbered-slots (partition 2 (interleave (range (count network-config))
+                                         network-config))]
+    (filter (comp not nil?)
+            (for [[slot-num slot] numbered-slots]
+              (if (and (not (nil? slot))
+                       (not (= false (:enabled slot)))
+                       (not (= false (:cable-connected slot))))
+                slot-num
+                nil)))))
+
+(defn- wait-for-all-ips
+  "Waits the interfaces in the network slots to acquire an IP address.
+  If any of them fails to do so, it will return false, otherwise it
+  will return true"
+  [machine slots]
+  (let [ip-seq
+        (doall (map #( wait-for-ip machine %) slots))]
+    (empty? (filter string/blank? ip-seq))))
+
 (defn- create-node
   "Instantiates a compute node on vmfest and runs the supplied init script.
 
@@ -363,11 +387,15 @@
     ;;    (logging/trace "Wait to allow boot")
     ;;    (Thread/sleep 15000)                ; wait minimal time for vm to boot
     (logging/trace "Waiting for ip")
-    (when (string/blank? (wait-for-ip machine))
-      (manager/destroy machine)
-      (throw+
-       {:type :no-ip-available
-        :message "Could not determine IP address of new node"}))
+    ;; TODO: Pass the slots to look for ips...
+    ;; TODO: Figure out how to determine if tetting the ip has been
+    ;; successful.
+    (let [connected-slots (connected-network-slots model)]
+      (when-not (wait-for-all-ips machine connected-slots)
+        (manager/destroy machine)
+        (throw+
+         {:type :no-ip-available
+          :message "Could not determine IP address of new node"})))
     ;; wait for services to come up, specially SSH
     ;; todo: provide some form of exponential backoff try with at
     ;; something like 3 attempts. A single wait for 4s might not
@@ -392,7 +420,8 @@
                  :script/bash
                  init-script)]
             (when-not (zero? exit)
-              (manager/destroy machine)
+              (when (:destroy-on-bootstrap-fail node-spec true)
+                (manager/destroy machine))
               (throw+
                {:message (format "Bootstrap failed: %s" out)
                 :type :pallet/bootstrap-failure
@@ -563,11 +592,15 @@
            {:network (if (= network-type :local)
                        ;; local networking
                        [{:attachment-type :host-only
-                         :host-interface default-local-interface}
+                         :host-only-interface default-local-interface}
                         {:attachment-type :nat}]
                        ;; bridged networking
                        [{:attachment-type :bridged
                          :host-interface default-bridged-interface}])})))
+
+(defn image-template-from-group-spec [group-spec]
+  (->> [:image :hardware :location :network :qos]
+       (select-keys group-spec) vals (reduce merge)))
 
 
 (deftype VmfestService
@@ -577,15 +610,24 @@
   (nodes [compute-service]
     (map #(VmfestNode. % compute-service) (manager/machines server)))
 
-  (ensure-os-family [compute-service group] group)
+  (ensure-os-family [compute-service group]
+    (logging/debugf "ensure-os-family called with group = %s" group)
+    ;; if we are looking for a particular image via image-id, then we
+    ;; need to fetch the meta of that image and merge its contents
+    ;; with the contents of the template.
+    (if-let  [image-id (keyword (-> group :image :image-id))]
+      (let [image-meta (image-id @images)]
+        (println
+         (format "ensure-os-family: \ngroup = %s \nimage-meta = %s"
+                 group image-meta))
+        (update-in group [:image] #(merge image-meta %)))
+      group))
 
   (run-nodes
     [compute-service group-spec node-count user init-script options]
+    (logging/debug "vmfest/run-nodes called!!!!")
     (try
-      (let [template (->> [:image :hardware :location :network :qos]
-                          (select-keys group-spec)
-                          vals
-                          (reduce merge))
+      (let [template (image-template-from-group-spec group-spec)
             _ (logging/debugf "run-nodes with template %s" template)
             image (or (image-from-template
                        @images template)
@@ -636,6 +678,7 @@
         (logging/debug (str "target-machines-to-create"
                             target-machines-to-create))
         (logging/debugf "Selected image: %s" image)
+        (logging/debugf "Hardware model %s" final-hardware-model)
         (create-nodes-fn
           target-machines-to-create
           compute-service
