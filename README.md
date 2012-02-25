@@ -47,7 +47,7 @@ Installation is with maven or your favourite maven repository aware build tool.
   <dependency>
     <groupId>org.cloudhoist</groupId>
     <artifactId>pallet-vmfest</artifactId>
-    <version>0.2.0-beta.1</version>
+    <version>0.2.0-beta.2</version>
   </dependency>
 <dependencies>
 
