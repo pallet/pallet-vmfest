@@ -202,7 +202,6 @@
   [node]
   (when-let [meta-str (manager/get-extra-data node image-meta-tag)]
     (when-not (empty? meta-str)
-      (print "meta is:" meta-str)
       (with-in-str meta-str (read)))))
 
 (deftype VmfestNode
@@ -617,9 +616,6 @@
     ;; with the contents of the template.
     (if-let  [image-id (keyword (-> group :image :image-id))]
       (let [image-meta (image-id @images)]
-        (println
-         (format "ensure-os-family: \ngroup = %s \nimage-meta = %s"
-                 group image-meta))
         (update-in group [:image] #(merge image-meta %)))
       group))
 
