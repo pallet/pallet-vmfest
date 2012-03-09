@@ -639,15 +639,27 @@
   (nodes [compute-service]
     (map #(VmfestNode. % compute-service) (manager/machines server)))
 
-  (ensure-os-family [compute-service group]
-    (logging/debugf "ensure-os-family called with group = %s" group)
+  (ensure-os-family [compute-service group-spec]
+    (logging/debugf "ensure-os-family called with group-spec = %s" group-spec)
     ;; if we are looking for a particular image via image-id, then we
     ;; need to fetch the meta of that image and merge its contents
     ;; with the contents of the template.
-    (if-let  [image-id (keyword (-> group :image :image-id))]
-      (let [image-meta (image-id @images)]
-        (update-in group [:image] #(merge image-meta %)))
-      group))
+    (let [template (image-template-from-group-spec group-spec)
+          image (or (image-from-template
+                     @images template)
+                    (throw (RuntimeException.
+                            (format
+                             "No matching image for %s in %s"
+                             (pr-str (:image group-spec))
+                             @images))))]
+      (update-in
+       group-spec [:image]
+       #(merge
+         {:image-id image}
+         (select-keys
+          (@images image)
+          [:os-family :os-version :os-64-bit :packager])
+         %))))
 
   (run-nodes
     [compute-service group-spec node-count user init-script options]
