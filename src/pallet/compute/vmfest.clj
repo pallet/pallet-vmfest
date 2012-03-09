@@ -152,6 +152,19 @@
   (catch Exception _
     (use '[slingshot.core :only [throw+ try+]])))
 
+;; feature predicates
+(defmacro get-has-feature
+  []
+  (try
+    (do
+      (require 'pallet.feature)
+      (when-not (ns-resolve 'pallet.compute.vmfest 'has-feature?)
+        (use '[pallet.feature :only [has-feature?]])))
+    (catch Exception e
+      `(defmacro has-feature? [_#] false))))
+
+(get-has-feature)
+
 (defn has-pallet-ssh-execute?
   []
   (try
@@ -363,6 +376,26 @@
         (doall (map #( wait-for-ip machine %) slots))]
     (empty? (filter string/blank? ip-seq))))
 
+(defmacro declare-bootstrap-va-ssh
+  []
+  (if (has-feature? multilang-script)
+    `(defn- bootstrap-via-ssh
+      [~'node ~'user ~'init-script]
+      (ssh-script-on-target
+       {:server {:node ~'node} :user ~'user}
+       {:node-value-path (gensym "vmfest")}
+       :script
+       [{:language :bash} ~'init-script]))
+    `(defn- bootstrap-via-ssh
+      [~'node ~'user ~'init-script]
+      (ssh-script-on-target
+       {:server {:node ~'node} :user ~'user}
+       {:node-value-path (gensym "vmfest")}
+       :script/bash
+       ~'init-script))))
+
+(declare-bootstrap-va-ssh)
+
 (defn- create-node
   "Instantiates a compute node on vmfest and runs the supplied init script.
 
@@ -400,31 +433,28 @@
     ;; something like 3 attempts. A single wait for 4s might not
     ;; work under high contention (e.g. starting many nodes)
     (Thread/sleep 4000)
-    (logging/tracef "Bootstrapping %s" (manager/get-ip machine))
     (let [node (VmfestNode. machine compute-service)]
-      (script/with-script-context
-        (action-plan/script-template-for-server {:image image})
-        (stevedore/with-script-language :pallet.stevedore.bash/bash
-          (let [user (if (:username image)
-                       (pallet.utils/make-user
-                        (:username image)
-                        :password (:password image)
-                        :no-sudo (:no-sudo image)
-                        :sudo-password (:sudo-password image))
-                       user)
-                [{:keys [out exit]} session]
-                (ssh-script-on-target
-                 {:server {:node node} :user user}
-                 {:node-value-path (gensym "vmfest")}
-                 :script/bash
-                 init-script)]
-            (when-not (zero? exit)
-              (when (:destroy-on-bootstrap-fail node-spec true)
-                (manager/destroy machine))
-              (throw+
-               {:message (format "Bootstrap failed: %s" out)
-                :type :pallet/bootstrap-failure
-                :group-spec node-spec})))))
+      (when-not (string/blank? init-script)
+        (logging/infof "Bootstrapping %s" (manager/get-ip machine))
+        (script/with-script-context
+          (action-plan/script-template-for-server {:image image})
+          (stevedore/with-script-language :pallet.stevedore.bash/bash
+            (let [user (if (:username image)
+                         (pallet.utils/make-user
+                          (:username image)
+                          :password (:password image)
+                          :no-sudo (:no-sudo image)
+                          :sudo-password (:sudo-password image))
+                         user)
+                  [{:keys [out exit]} session] (bootstrap-via-ssh
+                                                node user init-script)]
+              (when-not (zero? exit)
+                (when (:destroy-on-bootstrap-fail node-spec true)
+                  (manager/destroy machine))
+                (throw+
+                 {:message (format "Bootstrap failed: %s" out)
+                  :type :pallet/bootstrap-failure
+                  :group-spec node-spec}))))))
       node)))
 
 (defn- always-match
