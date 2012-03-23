@@ -217,6 +217,12 @@
     (when-not (empty? meta-str)
       (with-in-str meta-str (read)))))
 
+(defn- node-running?
+  [node]
+  (and
+     (session/with-no-session node [vb-m] (.getAccessible vb-m))
+     (= :running (manager/state node))))
+
 (deftype VmfestNode
     [^vmfest.virtualbox.model.Machine node service]
   pallet.node/Node
@@ -280,9 +286,7 @@
        (:os-version meta))))
   (running?
     [_]
-    (and
-     (session/with-no-session node [vb-m] (.getAccessible vb-m))
-     (= :running (manager/state node))))
+    (node-running? node))
   (terminated? [_] false)
   (id [_] (:id node))
   (compute-service [_] service))
@@ -632,6 +636,18 @@
        (select-keys group-spec) vals (reduce merge)))
 
 
+(defn node-shutdown [machine]
+  (manager/power-down machine)
+  (if-let [state (manager/wait-for-machine-state
+                  machine [:powered-off] 300000)]
+    (logging/infof "Machine state is %s" state)
+    (logging/warn "Failed to wait for power down completion"))
+  (manager/wait-for-lockable-session-state machine 2000))
+
+(defn node-destroy [machine]
+  (node-shutdown machine)
+  (manager/destroy machine))
+
 (deftype VmfestService
     [server images locations network-type local-interface bridged-interface
      environment models]
@@ -730,8 +746,9 @@
 
   (reboot
     [compute nodes]
-    (compute/shutdown server nodes nil)
-    (compute/boot-if-down server nodes))
+    (doseq [node nodes]
+      (node-shutdown node)
+      (manager/start node)))
 
   (boot-if-down
     [compute nodes]
@@ -743,34 +760,28 @@
     ;; todo: wait for completion
     (logging/infof "Shutting down %s" (pr-str node))
     (let [machine (.node node)]
-      (manager/power-down machine)
-      (if-let [state (manager/wait-for-machine-state
-                      machine [:powered-off] 300000)]
-        (logging/infof "Machine state is %s" state)
-        (logging/warn "Failed to wait for power down completion"))
-      (manager/wait-for-lockable-session-state machine 2000)))
+      (node-shutdown machine)))
 
   (shutdown
     [compute nodes user]
     (doseq [node nodes]
-      (compute/shutdown-node server node user)))
+      (node-shutdown node)))
 
   (destroy-nodes-in-group
     [compute group-name]
     (let [nodes (locking compute ;; avoid disappearing machines
                   (filter
                    #(and
-                     (node/running? %)
+                     (node-running? %)
                      (= group-name (manager/get-extra-data % group-name-tag)))
                    (manager/machines server)))]
       (doseq [machine nodes]
-        (compute/destroy-node compute machine))))
+        (node-destroy machine))))
 
   (destroy-node
     [compute node]
     {:pre [node]}
-    (compute/shutdown-node compute node nil)
-    (manager/destroy (.node node)))
+    (node-destroy (.node node)))
 
   (images [compute]
     @images)
