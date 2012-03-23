@@ -138,7 +138,7 @@
   </repositories>
 
   <properties>
-    <vmfest.version>0.2.4-SNAPSHOT</vmfest.version>
+    <vmfest.version>0.2.4-beta.4</vmfest.version>
     <pallet.version>0.7.0-beta.1</pallet.version>
     <pallet-vmfest.doc.version>0.2</pallet-vmfest.doc.version>
     <zi.version>0.4.5</zi.version>
