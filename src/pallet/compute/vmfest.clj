@@ -152,6 +152,19 @@
   (catch Exception _
     (use '[slingshot.core :only [throw+ try+]])))
 
+;; feature predicates
+(defmacro get-has-feature
+  []
+  (try
+    (do
+      (require 'pallet.feature)
+      (when-not (ns-resolve 'pallet.compute.vmfest 'has-feature?)
+        (use '[pallet.feature :only [has-feature?]])))
+    (catch Exception e
+      `(defmacro has-feature? [_#] false))))
+
+(get-has-feature)
+
 (defn has-pallet-ssh-execute?
   []
   (try
@@ -202,8 +215,13 @@
   [node]
   (when-let [meta-str (manager/get-extra-data node image-meta-tag)]
     (when-not (empty? meta-str)
-      (print "meta is:" meta-str)
       (with-in-str meta-str (read)))))
+
+(defn- node-running?
+  [node]
+  (and
+     (session/with-no-session node [vb-m] (.getAccessible vb-m))
+     (= :running (manager/state node))))
 
 (deftype VmfestNode
     [^vmfest.virtualbox.model.Machine node service]
@@ -268,9 +286,7 @@
        (:os-version meta))))
   (running?
     [_]
-    (and
-     (session/with-no-session node [vb-m] (.getAccessible vb-m))
-     (= :running (manager/state node))))
+    (node-running? node))
   (terminated? [_] false)
   (id [_] (:id node))
   (compute-service [_] service))
@@ -364,6 +380,26 @@
         (doall (map #( wait-for-ip machine %) slots))]
     (empty? (filter string/blank? ip-seq))))
 
+(defmacro declare-bootstrap-va-ssh
+  []
+  (if (has-feature? multilang-script)
+    `(defn- bootstrap-via-ssh
+      [~'node ~'user ~'init-script]
+      (ssh-script-on-target
+       {:server {:node ~'node} :user ~'user}
+       {:node-value-path (gensym "vmfest")}
+       :script
+       [{:language :bash} ~'init-script]))
+    `(defn- bootstrap-via-ssh
+      [~'node ~'user ~'init-script]
+      (ssh-script-on-target
+       {:server {:node ~'node} :user ~'user}
+       {:node-value-path (gensym "vmfest")}
+       :script/bash
+       ~'init-script))))
+
+(declare-bootstrap-va-ssh)
+
 (defn- create-node
   "Instantiates a compute node on vmfest and runs the supplied init script.
 
@@ -401,31 +437,28 @@
     ;; something like 3 attempts. A single wait for 4s might not
     ;; work under high contention (e.g. starting many nodes)
     (Thread/sleep 4000)
-    (logging/tracef "Bootstrapping %s" (manager/get-ip machine))
     (let [node (VmfestNode. machine compute-service)]
-      (script/with-script-context
-        (action-plan/script-template-for-server {:image image})
-        (stevedore/with-script-language :pallet.stevedore.bash/bash
-          (let [user (if (:username image)
-                       (pallet.utils/make-user
-                        (:username image)
-                        :password (:password image)
-                        :no-sudo (:no-sudo image)
-                        :sudo-password (:sudo-password image))
-                       user)
-                [{:keys [out exit]} session]
-                (ssh-script-on-target
-                 {:server {:node node} :user user}
-                 {:node-value-path (gensym "vmfest")}
-                 :script/bash
-                 init-script)]
-            (when-not (zero? exit)
-              (when (:destroy-on-bootstrap-fail node-spec true)
-                (manager/destroy machine))
-              (throw+
-               {:message (format "Bootstrap failed: %s" out)
-                :type :pallet/bootstrap-failure
-                :group-spec node-spec})))))
+      (when-not (string/blank? init-script)
+        (logging/infof "Bootstrapping %s" (manager/get-ip machine))
+        (script/with-script-context
+          (action-plan/script-template-for-server {:image image})
+          (stevedore/with-script-language :pallet.stevedore.bash/bash
+            (let [user (if (:username image)
+                         (pallet.utils/make-user
+                          (:username image)
+                          :password (:password image)
+                          :no-sudo (:no-sudo image)
+                          :sudo-password (:sudo-password image))
+                         user)
+                  [{:keys [out exit]} session] (bootstrap-via-ssh
+                                                node user init-script)]
+              (when-not (zero? exit)
+                (when (:destroy-on-bootstrap-fail node-spec true)
+                  (manager/destroy machine))
+                (throw+
+                 {:message (format "Bootstrap failed: %s" out)
+                  :type :pallet/bootstrap-failure
+                  :group-spec node-spec}))))))
       node)))
 
 (defn- always-match
@@ -603,6 +636,18 @@
        (select-keys group-spec) vals (reduce merge)))
 
 
+(defn node-shutdown [machine]
+  (manager/power-down machine)
+  (if-let [state (manager/wait-for-machine-state
+                  machine [:powered-off] 300000)]
+    (logging/infof "Machine state is %s" state)
+    (logging/warn "Failed to wait for power down completion"))
+  (manager/wait-for-lockable-session-state machine 2000))
+
+(defn node-destroy [machine]
+  (node-shutdown machine)
+  (manager/destroy machine))
+
 (deftype VmfestService
     [server images locations network-type local-interface bridged-interface
      environment models]
@@ -610,18 +655,27 @@
   (nodes [compute-service]
     (map #(VmfestNode. % compute-service) (manager/machines server)))
 
-  (ensure-os-family [compute-service group]
-    (logging/debugf "ensure-os-family called with group = %s" group)
+  (ensure-os-family [compute-service group-spec]
+    (logging/debugf "ensure-os-family called with group-spec = %s" group-spec)
     ;; if we are looking for a particular image via image-id, then we
     ;; need to fetch the meta of that image and merge its contents
     ;; with the contents of the template.
-    (if-let  [image-id (keyword (-> group :image :image-id))]
-      (let [image-meta (image-id @images)]
-        (println
-         (format "ensure-os-family: \ngroup = %s \nimage-meta = %s"
-                 group image-meta))
-        (update-in group [:image] #(merge image-meta %)))
-      group))
+    (let [template (image-template-from-group-spec group-spec)
+          image (or (image-from-template
+                     @images template)
+                    (throw (RuntimeException.
+                            (format
+                             "No matching image for %s in %s"
+                             (pr-str (:image group-spec))
+                             @images))))]
+      (update-in
+       group-spec [:image]
+       #(merge
+         {:image-id image}
+         (select-keys
+          (@images image)
+          [:os-family :os-version :os-64-bit :packager])
+         %))))
 
   (run-nodes
     [compute-service group-spec node-count user init-script options]
@@ -692,8 +746,9 @@
 
   (reboot
     [compute nodes]
-    (compute/shutdown server nodes nil)
-    (compute/boot-if-down server nodes))
+    (doseq [node nodes]
+      (node-shutdown node)
+      (manager/start node)))
 
   (boot-if-down
     [compute nodes]
@@ -705,34 +760,28 @@
     ;; todo: wait for completion
     (logging/infof "Shutting down %s" (pr-str node))
     (let [machine (.node node)]
-      (manager/power-down machine)
-      (if-let [state (manager/wait-for-machine-state
-                      machine [:powered-off] 300000)]
-        (logging/infof "Machine state is %s" state)
-        (logging/warn "Failed to wait for power down completion"))
-      (manager/wait-for-lockable-session-state machine 2000)))
+      (node-shutdown machine)))
 
   (shutdown
     [compute nodes user]
     (doseq [node nodes]
-      (compute/shutdown-node server node user)))
+      (node-shutdown node)))
 
   (destroy-nodes-in-group
     [compute group-name]
     (let [nodes (locking compute ;; avoid disappearing machines
                   (filter
                    #(and
-                     (node/running? %)
+                     (node-running? %)
                      (= group-name (manager/get-extra-data % group-name-tag)))
                    (manager/machines server)))]
       (doseq [machine nodes]
-        (compute/destroy-node compute machine))))
+        (node-destroy machine))))
 
   (destroy-node
     [compute node]
     {:pre [node]}
-    (compute/shutdown-node compute node nil)
-    (manager/destroy (.node node)))
+    (node-destroy (.node node)))
 
   (images [compute]
     @images)
