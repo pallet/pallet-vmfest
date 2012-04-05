@@ -722,7 +722,8 @@
             final-hardware-model (selected-hardware-model
                                   template
                                   models
-                                  network-type
+                                  (or (:network-type (image @images))
+                                      network-type)
                                   local-interface
                                   bridged-interface)]
         (logging/debug (str "current-machine-names " current-machine-names))
