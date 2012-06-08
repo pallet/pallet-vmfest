@@ -4,7 +4,7 @@
   <parent>
     <groupId>org.cloudhoist</groupId>
     <artifactId>parent-pom</artifactId>
-    <version>0.1.2-SNAPSHOT</version>
+    <version>0.1.3</version>
   </parent>
   <groupId>org.cloudhoist</groupId>
   <artifactId>pallet-vmfest</artifactId>
@@ -142,9 +142,8 @@
 
   <properties>
     <vmfest.version>0.2.4-beta.5</vmfest.version>
-    <pallet.version>0.7.0-beta.1</pallet.version>
+    <pallet.version>0.7.0</pallet.version>
     <pallet-vmfest.doc.version>0.2</pallet-vmfest.doc.version>
-    <zi.version>0.4.5</zi.version>
   </properties>
 
 </project>
