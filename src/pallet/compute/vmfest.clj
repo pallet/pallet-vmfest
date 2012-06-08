@@ -598,7 +598,7 @@
           }))
 
 (defn- selected-hardware-model
-  [{:keys [hardware-id hardware-model] :as template} models
+  [{:keys [hardware-id hardware-model] :as template} models storage-overide
    default-network-type default-local-interface default-bridged-interface]
   (let [model
         (cond
@@ -620,6 +620,7 @@
         ;; default
         network-type (or (:network-type model) default-network-type)]
     (merge model
+           storage-overide
            ;; add the right network interface configuration for the final
            ;; network-type
            {:network (if (= network-type :local)
@@ -719,11 +720,14 @@
             create-nodes-fn (get-in environment
                                     [:algorithms :vmfest :create-nodes-fn]
                                     parallel-create-nodes)
+            image-map (image @images)
+            network-type (or (:network-type (image @images)) network-type)
             final-hardware-model (selected-hardware-model
                                   template
                                   models
-                                  (or (:network-type (image @images))
-                                      network-type)
+                                  (select-keys
+                                   image-map [:storage :boot-mount-point])
+                                  network-type
                                   local-interface
                                   bridged-interface)]
         (logging/debug (str "current-machine-names " current-machine-names))
