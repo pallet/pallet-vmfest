@@ -427,7 +427,8 @@
     ;; TODO: Figure out how to determine if tetting the ip has been
     ;; successful.
     (let [connected-slots (connected-network-slots model)]
-      (when-not (wait-for-all-ips machine connected-slots)
+      (when (and (not (wait-for-all-ips machine connected-slots))
+                 (:destroy-on-ip-fail node-spec true))
         (manager/destroy machine)
         (throw+
          {:type :no-ip-available
