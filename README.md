@@ -28,7 +28,7 @@ Installation is with maven or your favourite maven repository aware build tool.
 
 ### lein project.clj
 
-```clojure
+``` clojure
 :dependencies [[org.cloudhoist/pallet "0.7.0-beta.2"]
                [org.cloudhoist/pallet-vmfest "0.2.0-beta.3"]]
 :repositories {"sonatype"
@@ -37,7 +37,7 @@ Installation is with maven or your favourite maven repository aware build tool.
 
 ### maven pom.xml
 
-```xml
+``` xml
 <dependencies>
   <dependency>
     <groupId>org.cloudhoist</groupId>
@@ -59,13 +59,180 @@ Installation is with maven or your favourite maven repository aware build tool.
 </repositories>
 ```
 
+## Usage
+
+### Prerequisites
+
+Follow [these
+instructions](https://github.com/tbatchelli/vmfest#install-virtualbox-41x)
+to install and setup VirtualBox to work with VMFest (and Pallet).
+
+### Defining the Compute Service
+
+At the REPL you can define the VMFest/VirtualBox compute service the following
+way:
+
+``` clojure
+(use '[pallet.configure :only [compute-service]])
+(def vmfest (compute-service "vmfest"))
+```
+
+For a more permanent solution, define the VMFest/VirtualBox service by
+adding a `:vmfest` service definition to your `~/.pallet/config.clj`
+as shown here:
+
+``` clojure
+(defpallet :services {:vmfest {:provider "vmfest"}})
+``` 
+
+### Installing Images
+
+Prior to using VMFest with Pallet for the first time, we need to setup
+at least one model image:
+
+```clojure
+(use '[pallet.compute.vmfest :only [add-image]])
+(add-image vmfest "https://s3.amazonaws.com/vmfest-images/debian-6.0.2.1-64bit-v0.3.vdi.gz")
+```
+
+You can verify that the image has been installed by running:
+```clojure
+(use '[pallet.compute :only [images]])
+(pprint (images vmfest))
+```
+
+The new image is named `:debian-6.0.2.1-64bit-v0.3`.
+
+## Using VMFest From Within Pallet
+
+Since we just installed an image named `:debian-6.0.2.1-64bit-v0.3`,
+we can proceed to use it by either referencing it directly:
+
+```clojure
+(use '[pallet.core :only [group-spec]])
+(def debian-group 
+    (group-spec "debian-vms" 
+         :node-spec {:image {:image-id :debian-6.0.2.1-64bit-v0.3}}))
+```
+
+or by specifying an appropriate template, just as you would do with
+any other cloud provider, e.g.:
+
+```clojure
+(use '[pallet.core :only [group-spec]])
+(def debian-group 
+    (group-spec "debian-vms" 
+         :node-spec {:image {:image {:os-family :debian      
+                                     :os-64-bit? true }}}))
+```
+
+## Configuration
+
+### Networking modes
+
+Pallet-vmfest can work with 2 different network models
+
+- __:local__: this is the default if no further configuration is
+    specified. :local mode provides many advantages, but requires that
+    the image used enables two network interfaces. In exchange, :local
+    mode is more convenient in general than :bridged mode that we will
+    discuss later:
+    
+    - VMs do not interact with external DHCP servers. This is relevant
+      when repeatedly starting and destroying VMs. Home routers and
+      office environments are not very happy when computers appear and
+      disappear from the network over and over again.
+    - VMs do not require valid IP addresses. Some IT environments have
+      tight control on those.
+    - VMs will continue to work if you switch networks. This is
+      specially important for mobile workers. If you switch from your
+      home to the coffee shop, your VMs will continue to work.
+    - You can use many different internal networks, which can be
+      useful when trying to emulate real network setups.
+      
+    On the other side, in this mode, VMs are not accessible from
+    outside your host computer.
+
+    By default pallet-vmfest will use :local mode, which is equivalent
+    to adding the following entries to the vmfest provider definition
+    in `~/.pallet/config.clj`:
+    
+    ```clojure
+    :default-network-type :local
+    :default-local-interface "vboxnet0"
+    ```
+    
+    `:default-local-interface` determines what local-only network will
+    be used (by default named `vboxnet0`, but you can use any as long
+    as the naming complies with `vboxnetN`. 
+
+   
+
+- __:bridged__: In this mode, each VM will use one of the host's
+    network interface directly to aquire a valid IP address in
+    whichever network the interface is on. This means also that the
+    selected host network interface needs to be on a valid network
+    (i.e. it won't work if your computer is not plugged into any
+    network) 
+
+    Why would you want this networking mode?
+
+    - One reason would be that you want your VMs to be acessible from
+      other hosts.
+    - The other reason is that you want to use VMFest to manage a
+      remote host (which implies the reason above)
+
+    There are a few drawbacks to this mode though:
+
+    - Your home router will die. It happens. They're not created to
+      see so much traffic of devices coming in and out of the network,
+      especially if you use DHCP (which vmfest requires)
+    - Your network administrator will get mad at you. "What are all
+      these devices coming in an out of the network, all at once, over
+      and over?!!"
+    - If you don't have a valid network connection, you can't
+      instantiate new VMs.
+    - If you are mobile, when you switch networks your VMs will stop
+      being reachable.
+
+    To use `:bridged` mode, you need to add the following two entries
+    in `~/.pallet.config.clj`, e.g.: 
+
+    ```clojure
+    :default-network-type :bridged
+    :default-bridged-interface "en1: Wi-Fi (AirPort)"
+    ```
+   
+    Notice that getting the name of the briged interface right is an
+    art in itself. But this art can be reduced to technique if you run
+    the following on your shell:
+
+    ```bash
+    $ VBoxManage list bridgedifs | grep ^Name
+    ```
+    
+    You need to use the name of your inteface verbatim in
+    `:default-bridged-interface`, orelse it won't work. And it doesn't
+    matter how this interface is named anywhere else. All it matters
+    is how VirtualBox sees it.
+
+
+
+### Custom Hardware Models
+
+TODO
+
+### Custom Images
+
+TODO
+
 ## License
 
 Licensed under [EPL](http://www.eclipse.org/legal/epl-v10.html)
 
 [Contributors](https://www.ohloh.net/p/pallet-clj/contributors)
 
-Copyright 2010, 2011, 2012  Hugo Duncan.
+Copyright 2010, 2011, 2012  Hugo Duncan and Antoni Batchelli
 
 
 [palletops]: http://palletops.com "Pallet site"
