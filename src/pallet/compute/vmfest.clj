@@ -180,10 +180,12 @@
        [session# action# action-type# script#]
        {:pre [(-> session# :server :node)
               (ns-resolve '~'pallet.execute '~'remote-sudo)]}
-       [((ns-resolve '~'pallet.execute '~'remote-sudo)
-         (node/primary-ip
-          (-> session# :server :node)) script# (:user session#) {:pty true})
-        session#])))
+       (let [os-family# (get-in session# [:server :image :os-family])]
+         [((ns-resolve '~'pallet.execute '~'remote-sudo)
+           (node/primary-ip (-> session# :server :node))
+           script# (:user session#)
+           {:pty (not= os-family# :fedora)})
+          session#]))))
 
 (def-ssh-script-on-target)
 
@@ -380,25 +382,25 @@
         (doall (map #( wait-for-ip machine %) slots))]
     (empty? (filter string/blank? ip-seq))))
 
-(defmacro declare-bootstrap-va-ssh
+(defmacro declare-bootstrap-via-ssh
   []
   (if (has-feature? multilang-script)
     `(defn- bootstrap-via-ssh
-      [~'node ~'user ~'init-script]
+      [~'image ~'node ~'user ~'init-script]
       (ssh-script-on-target
-       {:server {:node ~'node} :user ~'user}
+       {:server {:node ~'node :image ~'image} :user ~'user}
        {:node-value-path (gensym "vmfest")}
        :script
        [{:language :bash} ~'init-script]))
     `(defn- bootstrap-via-ssh
-      [~'node ~'user ~'init-script]
+      [~'image ~'node ~'user ~'init-script]
       (ssh-script-on-target
-       {:server {:node ~'node} :user ~'user}
+       {:server {:node ~'node :image ~'image} :user ~'user}
        {:node-value-path (gensym "vmfest")}
        :script/bash
        ~'init-script))))
 
-(declare-bootstrap-va-ssh)
+(declare-bootstrap-via-ssh)
 
 (defn- create-node
   "Instantiates a compute node on vmfest and runs the supplied init script.
@@ -452,7 +454,7 @@
                           :sudo-password (:sudo-password image))
                          user)
                   [{:keys [out exit]} session] (bootstrap-via-ssh
-                                                node user init-script)]
+                                                image node user init-script)]
               (when-not (zero? exit)
                 (when (:destroy-on-bootstrap-fail node-spec true)
                   (manager/destroy machine))
