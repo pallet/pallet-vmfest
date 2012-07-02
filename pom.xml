@@ -74,14 +74,14 @@
       <version>${pallet.version}</version>
       <scope>provided</scope>
     </dependency>
-    <dependency>
+<!--    <dependency>
       <groupId>org.cloudhoist</groupId>
       <artifactId>pallet</artifactId>
       <version>${pallet.version}</version>
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>
-
+-->
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
@@ -141,7 +141,7 @@
   </developers>
 
   <properties>
-    <vmfest.version>0.2.4-beta.5</vmfest.version>
+    <vmfest.version>0.2.4</vmfest.version>
     <pallet.version>0.7.0</pallet.version>
     <pallet-vmfest.doc.version>0.2</pallet-vmfest.doc.version>
   </properties>
