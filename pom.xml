@@ -8,7 +8,7 @@
   </parent>
   <groupId>org.cloudhoist</groupId>
   <artifactId>pallet-vmfest</artifactId>
-  <version>0.2.0-SNAPSHOT</version>
+  <version>0.2.0</version>
   <packaging>jar</packaging>
   <name>Pallet vmfest provider</name>
   <description>
