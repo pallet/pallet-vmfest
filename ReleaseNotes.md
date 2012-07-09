@@ -1,5 +1,22 @@
 # Release Notes
 
+## 0.2.0
+
+- Use the released version of vmfest 0.2.4.
+
+- Disable pty for fedora
+  Fedora seems to flush standard input when using a pty, and so
+  intermittently misses the pallet scripts being sent to it.
+
+- Allow override of destruction of vm on IP acquistion failure
+
+- Allow image metadata to overide hardware model storage
+  Images boot on either SATA or IDE but not both, so the storage device
+  required on the hardware is image dependent.
+
+- Allow specification of the :network-type on the image metadata
+  Allows the image to specify it's preferred network connection type
+
 ## 0.2.0-beta.3
 
 - Update to vmfest 0.2.4-beta.4
