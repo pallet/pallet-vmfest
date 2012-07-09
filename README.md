@@ -1,6 +1,7 @@
 # pallet-vmfest
 
-A provider for [Pallet][palletops], to use [vmfest][vmfest] to access [virtualbox][virtualbox].
+A provider for [Pallet][palletops], to use [vmfest][vmfest] to access
+[virtualbox][virtualbox].
 
 ## Pallet
 
@@ -29,8 +30,8 @@ Installation is with maven or your favourite maven repository aware build tool.
 ### lein project.clj
 
 ``` clojure
-:dependencies [[org.cloudhoist/pallet "0.7.0-beta.2"]
-               [org.cloudhoist/pallet-vmfest "0.2.0-beta.3"]]
+:dependencies [[org.cloudhoist/pallet "0.7.0"]
+               [org.cloudhoist/pallet-vmfest "0.2.0"]]
 :repositories {"sonatype"
                "http://oss.sonatype.org/content/repositories/releases"}
 ```
@@ -42,12 +43,12 @@ Installation is with maven or your favourite maven repository aware build tool.
   <dependency>
     <groupId>org.cloudhoist</groupId>
     <artifactId>pallet</artifactId>
-    <version>0.7.0-beta.2</version>
+    <version>0.7.0</version>
   </dependency>
   <dependency>
     <groupId>org.cloudhoist</groupId>
     <artifactId>pallet-vmfest</artifactId>
-    <version>0.2.0-beta.3</version>
+    <version>0.2.0</version>
   </dependency>
 <dependencies>
 
@@ -92,7 +93,8 @@ at least one model image:
 
 ```clojure
 (use '[pallet.compute.vmfest :only [add-image]])
-(add-image vmfest "https://s3.amazonaws.com/vmfest-images/debian-6.0.2.1-64bit-v0.3.vdi.gz")
+(add-image vmfest
+  "https://s3.amazonaws.com/vmfest-images/debian-6.0.2.1-64bit-v0.3.vdi.gz")
 ```
 
 You can verify that the image has been installed by running:
