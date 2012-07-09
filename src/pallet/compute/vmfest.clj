@@ -180,10 +180,12 @@
        [session# action# action-type# script#]
        {:pre [(-> session# :server :node)
               (ns-resolve '~'pallet.execute '~'remote-sudo)]}
-       [((ns-resolve '~'pallet.execute '~'remote-sudo)
-         (node/primary-ip
-          (-> session# :server :node)) script# (:user session#) {:pty true})
-        session#])))
+       (let [os-family# (get-in session# [:server :image :os-family])]
+         [((ns-resolve '~'pallet.execute '~'remote-sudo)
+           (node/primary-ip (-> session# :server :node))
+           script# (:user session#)
+           {:pty (not= os-family# :fedora)})
+          session#]))))
 
 (def-ssh-script-on-target)
 
@@ -380,25 +382,25 @@
         (doall (map #( wait-for-ip machine %) slots))]
     (empty? (filter string/blank? ip-seq))))
 
-(defmacro declare-bootstrap-va-ssh
+(defmacro declare-bootstrap-via-ssh
   []
   (if (has-feature? multilang-script)
     `(defn- bootstrap-via-ssh
-      [~'node ~'user ~'init-script]
+      [~'image ~'node ~'user ~'init-script]
       (ssh-script-on-target
-       {:server {:node ~'node} :user ~'user}
+       {:server {:node ~'node :image ~'image} :user ~'user}
        {:node-value-path (gensym "vmfest")}
        :script
        [{:language :bash} ~'init-script]))
     `(defn- bootstrap-via-ssh
-      [~'node ~'user ~'init-script]
+      [~'image ~'node ~'user ~'init-script]
       (ssh-script-on-target
-       {:server {:node ~'node} :user ~'user}
+       {:server {:node ~'node :image ~'image} :user ~'user}
        {:node-value-path (gensym "vmfest")}
        :script/bash
        ~'init-script))))
 
-(declare-bootstrap-va-ssh)
+(declare-bootstrap-via-ssh)
 
 (defn- create-node
   "Instantiates a compute node on vmfest and runs the supplied init script.
@@ -427,7 +429,8 @@
     ;; TODO: Figure out how to determine if tetting the ip has been
     ;; successful.
     (let [connected-slots (connected-network-slots model)]
-      (when-not (wait-for-all-ips machine connected-slots)
+      (when (and (not (wait-for-all-ips machine connected-slots))
+                 (:destroy-on-ip-fail node-spec true))
         (manager/destroy machine)
         (throw+
          {:type :no-ip-available
@@ -451,7 +454,7 @@
                           :sudo-password (:sudo-password image))
                          user)
                   [{:keys [out exit]} session] (bootstrap-via-ssh
-                                                node user init-script)]
+                                                image node user init-script)]
               (when-not (zero? exit)
                 (when (:destroy-on-bootstrap-fail node-spec true)
                   (manager/destroy machine))
@@ -598,7 +601,7 @@
           }))
 
 (defn- selected-hardware-model
-  [{:keys [hardware-id hardware-model] :as template} models
+  [{:keys [hardware-id hardware-model] :as template} models storage-overide
    default-network-type default-local-interface default-bridged-interface]
   (let [model
         (cond
@@ -620,6 +623,7 @@
         ;; default
         network-type (or (:network-type model) default-network-type)]
     (merge model
+           storage-overide
            ;; add the right network interface configuration for the final
            ;; network-type
            {:network (if (= network-type :local)
@@ -719,9 +723,13 @@
             create-nodes-fn (get-in environment
                                     [:algorithms :vmfest :create-nodes-fn]
                                     parallel-create-nodes)
+            image-map (image @images)
+            network-type (or (:network-type (image @images)) network-type)
             final-hardware-model (selected-hardware-model
                                   template
                                   models
+                                  (select-keys
+                                   image-map [:storage :boot-mount-point])
                                   network-type
                                   local-interface
                                   bridged-interface)]
