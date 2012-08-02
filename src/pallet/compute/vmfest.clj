@@ -153,15 +153,21 @@
     (use '[slingshot.core :only [throw+ try+]])))
 
 ;; feature predicates
-(defmacro get-has-feature
+(defmacro ^{:private true} get-has-feature
   []
   (try
     (do
       (require 'pallet.feature)
       (when-not (ns-resolve 'pallet.compute.vmfest 'has-feature?)
-        (use '[pallet.feature :only [has-feature?]])))
+        (use '[pallet.feature
+               :only [has-feature? when-feature when-not-feature]])))
     (catch Exception e
-      `(defmacro has-feature? [_#] false))))
+      `(do
+         (defmacro ^{:private true} has-feature? [_#] false)
+         (defmacro ^{:private true} when-not-feature [_# & ~'body]
+           `(do ~@~'body))
+         (defmacro ^{:private true} when-feature [_# & ~'body]
+           nil)))))
 
 (get-has-feature)
 
@@ -188,6 +194,15 @@
           session#]))))
 
 (def-ssh-script-on-target)
+
+(defmacro def-make-user []
+  (if (has-feature? core-user)
+    '(defn make-user [username & {:as args}]
+       (pallet.core.user/make-user username args))
+    '(defn make-user [username & args]
+       (apply pallet.utils/make-user username args))))
+
+(def-make-user)
 
 ;; fallback os family translation data. This should be removed once
 ;; everyone is using metadata in their images.
@@ -229,16 +244,14 @@
     [^vmfest.virtualbox.model.Machine node service]
   pallet.node/Node
   (ssh-port [_] 22)
-  (primary-ip
-    [_]
+  (primary-ip [_]
     (try+
-     (manager/get-ip node)
-     (catch Exception _
-       ;; fallback to the ip stored in the node's extra parameters
-       (manager/get-extra-data node ip-tag))))
+      (manager/get-ip node)
+      (catch Exception _
+        ;; fallback to the ip stored in the node's extra parameters
+        (manager/get-extra-data node ip-tag))))
   (private-ip [_] nil)
-  (is-64bit?
-    [_]
+  (is-64bit? [_]
     (let [meta (image-meta-from-node node)
           os-64-bit (:os-64-bit meta)
           os-type-id (:os-type-id meta)]
@@ -257,18 +270,15 @@
               (boolean (re-find #"_64" os-type-id))
               (logging/error
                "Cannot determine if machine is 64 bit by any means."))))))
-  (group-name
-    [_]
+  (group-name [_]
     (let [group-name (manager/get-extra-data node group-name-tag)]
       (if (string/blank? group-name)
         (manager/get-extra-data node group-name-tag)
         group-name)))
-  (hostname
-    [_]
+  (hostname [_]
     (session/with-no-session node [m]
       (.getName m)))
-  (os-family
-    [_]
+  (os-family [_]
     (let [meta (image-meta-from-node node)
           os-family-from-meta (:os-family meta)]
       (if os-family-from-meta
@@ -276,22 +286,43 @@
         ;; try guessing it from the VBox Machine object. This should
         ;; not be necessary in the near future. Remove after 0.3
         (do
-          (logging/warnf "Cannot get os-family from node's metadata '%s'. Trying to guess" meta)
+          (logging/warnf
+           "Cannot get os-family from node's metadata '%s'. Trying to guess"
+           meta)
           (let [os-name (session/with-no-session node [m] (.getOSTypeId m))]
             (or (os-family-from-name os-name os-name)
                 :centos) ;; todo: remove this hack!
             )))))
-  (os-version
-    [_]
+  (os-version [_]
     (let [meta (image-meta-from-node node)]
       (or
        (:os-version meta))))
-  (running?
-    [_]
+  (running? [_]
     (node-running? node))
   (terminated? [_] false)
   (id [_] (:id node))
   (compute-service [_] service))
+
+(when-feature node-packager
+  (extend-type VmfestNode
+    pallet.node/NodePackager
+    (packager [n]
+      (compute/packager-for-os (node/os-family n) (node/os-version n)))))
+
+(when-feature node-image
+  (extend-type VmfestNode
+    pallet.node/NodeImage
+    (image-user [node]
+      (let [meta (image-meta-from-node (.node node))
+            username (:username meta)]
+        (when username
+          (utils/apply-map
+           make-user
+           username
+           (merge
+            {:public-key-path nil :private-key-path nil}
+            (select-keys meta [:password :sudo-password :no-sudo]))))))))
+
 
 (defn- nil-if-blank [x]
   (if (string/blank? x) nil x))
@@ -441,27 +472,28 @@
     ;; work under high contention (e.g. starting many nodes)
     (Thread/sleep 4000)
     (let [node (VmfestNode. machine compute-service)]
-      (when-not (string/blank? init-script)
-        (logging/infof "Bootstrapping %s" (manager/get-ip machine))
-        (script/with-script-context
-          (action-plan/script-template-for-server {:image image})
-          (stevedore/with-script-language :pallet.stevedore.bash/bash
-            (let [user (if (:username image)
-                         (pallet.utils/make-user
-                          (:username image)
-                          :password (:password image)
-                          :no-sudo (:no-sudo image)
-                          :sudo-password (:sudo-password image))
-                         user)
-                  [{:keys [out exit]} session] (bootstrap-via-ssh
-                                                image node user init-script)]
-              (when-not (zero? exit)
-                (when (:destroy-on-bootstrap-fail node-spec true)
-                  (manager/destroy machine))
-                (throw+
-                 {:message (format "Bootstrap failed: %s" out)
-                  :type :pallet/bootstrap-failure
-                  :group-spec node-spec}))))))
+      (when-not-feature run-nodes-without-bootstrap
+        (when-not (string/blank? init-script)
+          (logging/infof "Bootstrapping %s" (manager/get-ip machine))
+          (script/with-script-context
+            (action-plan/script-template-for-server {:image image})
+            (stevedore/with-script-language :pallet.stevedore.bash/bash
+              (let [user (if (:username image)
+                           (pallet.utils/make-user
+                            (:username image)
+                            :password (:password image)
+                            :no-sudo (:no-sudo image)
+                            :sudo-password (:sudo-password image))
+                           user)
+                    [{:keys [out exit]} session] (bootstrap-via-ssh
+                                                  image node user init-script)]
+                (when-not (zero? exit)
+                  (when (:destroy-on-bootstrap-fail node-spec true)
+                    (manager/destroy machine))
+                  (throw+
+                   {:message (format "Bootstrap failed: %s" out)
+                    :type :pallet/bootstrap-failure
+                    :group-spec node-spec})))))))
       node)))
 
 (defn- always-match
@@ -654,7 +686,7 @@
 
 (deftype VmfestService
     [server images locations network-type local-interface bridged-interface
-     environment models]
+     environment models tag-provider]
   pallet.compute/ComputeService
   (nodes [compute-service]
     (map #(VmfestNode. % compute-service) (manager/machines server)))
@@ -683,7 +715,6 @@
 
   (run-nodes
     [compute-service group-spec node-count user init-script options]
-    (logging/debug "vmfest/run-nodes called!!!!")
     (try
       (let [template (image-template-from-group-spec group-spec)
             _ (logging/debugf "run-nodes with template %s" template)
@@ -838,6 +869,51 @@
   (find-images [_ template]
     (all-images-from-template @images template)))
 
+(defmacro add-node-tag []
+  (if (has-feature? taggable-nodes)
+    '(do
+       (deftype ExtraDataNodeTag []
+         pallet.compute.NodeTagReader
+         (node-tag [_ node tag-name]
+           (manager/get-extra-data (.node node) tag-name))
+         (node-tag [_ node tag-name default-value]
+           (let [value (manager/get-extra-data (.node node) tag-name)]
+             (if (string/blank? value)
+               (let [keys (manager/get-extra-data-keys (.node node))]
+                 (if (seq (filter #(= tag-name %) keys))
+                   value
+                   default-value))
+               value)))
+         (node-tags [_ node]
+           (into {}
+                 (map
+                  #(vector % (manager/get-extra-data (.node node) %))
+                  (manager/get-extra-data-keys (.node node)))))
+         pallet.compute.NodeTagWriter
+         (tag-node! [_ node tag-name value]
+           (manager/set-extra-data (.node node) tag-name value))
+         (node-taggable? [_ node] true))
+       (extend-type VmfestService
+         pallet.compute/NodeTagReader
+         (node-tag
+           ([compute node tag-name]
+              (compute/node-tag
+               (.tag_provider compute) node tag-name))
+           ([compute node tag-name default-value]
+              (compute/node-tag
+               (.tag_provider compute) node tag-name default-value)))
+         (node-tags [compute node]
+           (compute/node-tags (.tag_provider compute) node))
+         pallet.compute/NodeTagWriter
+         (tag-node! [compute node tag-name value]
+           (compute/tag-node! (.tag_provider compute) node tag-name value))
+         (node-taggable? [compute node]
+           (compute/node-taggable? (.tag_provider compute) node)))
+       (defn default-tag-provider [] (ExtraDataNodeTag.)))
+    `(defn ~'default-tag-provider [] nil)))
+
+(add-node-tag)
+
 (defn add-image
   "Add an image to the images available. The image will be installed from the
    specified `url-string`."
@@ -874,7 +950,7 @@
 (defmethod implementation/service :vmfest
   [_ {:keys [url identity credential images node-path model-path locations
              environment default-network-type default-bridged-interface
-             default-local-interface hardware-models]
+             default-local-interface hardware-models tag-provider]
       :or {url "http://localhost:18083/"
            identity "test"
            credential "test"
@@ -927,30 +1003,31 @@
      local-iface
      bridged-iface
      environment
-     models)))
+     models
+     (or tag-provider (default-tag-provider)))))
 
-(defmethod clojure.core/print-method VmfestNode
-  [node writer]
-  (let [machine (.node node)
-        accessible (try (session/with-vbox (:server machine) [_ vbox]
-                          (session/with-no-session machine [m]
-                            (machine/get-attribute m :accessible?)))
-                        (catch Exception _))]
-    (cond
-      (not accessible)
-      (.write writer "Unaccessible vmfest node")
+;; (defmethod clojure.core/print-method VmfestNode
+;;   [node writer]
+;;   (let [machine (.node node)
+;;         accessible (try (session/with-vbox (:server machine) [_ vbox]
+;;                           (session/with-no-session machine [m]
+;;                             (machine/get-attribute m :accessible?)))
+;;                         (catch Exception _))]
+;;     (cond
+;;       (not accessible)
+;;       (.write writer "Unaccessible vmfest node")
 
-      (not
-       (->>
-        (compute/nodes (.service node))
-        (some #(= (:id machine) (:id (.node %))))))
-      (.write writer "Unregistered vmfest node")
+;;       (not
+;;        (->>
+;;         (compute/nodes (.service node))
+;;         (some #(= (:id machine) (:id (.node %))))))
+;;       (.write writer "Unregistered vmfest node")
 
-      :else
-      (.write
-       writer
-       (format
-        "%14s\t %14s\t public: %s"
-        (try (node/hostname node) (catch Throwable e "unknown"))
-        (try (node/group-name node) (catch Throwable e "unknown"))
-        (try (node/primary-ip node) (catch Throwable e "unknown")))))))
+;;       :else
+;;       (.write
+;;        writer
+;;        (format
+;;         "%14s\t %14s\t public: %s"
+;;         (try (node/hostname node) (catch Throwable e "unknown"))
+;;         (try (node/group-name node) (catch Throwable e "unknown"))
+;;         (try (node/primary-ip node) (catch Throwable e "unknown")))))))

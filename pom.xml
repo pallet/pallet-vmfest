@@ -69,19 +69,37 @@
 
   <dependencies>
     <dependency>
+      <groupId>org.clojure</groupId>
+      <artifactId>clojure</artifactId>
+      <version>${clojure.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
       <groupId>org.cloudhoist</groupId>
       <artifactId>pallet</artifactId>
       <version>${pallet.version}</version>
-      <scope>provided</scope>
+      <scope>test</scope>
     </dependency>
-<!--    <dependency>
+   <dependency>
       <groupId>org.cloudhoist</groupId>
       <artifactId>pallet</artifactId>
       <version>${pallet.version}</version>
       <type>test-jar</type>
       <scope>test</scope>
     </dependency>
--->
+    <dependency>
+      <groupId>midje</groupId>
+      <artifactId>midje</artifactId>
+      <version>1.4.0-beta2</version>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>useful</groupId>
+      <artifactId>useful</artifactId>
+      <version>0.8.3-alpha6</version>
+    </dependency>
+
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
@@ -109,6 +127,40 @@
   </dependencies>
 
   <profiles>
+    <profile>
+      <id>live-test</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.cloudhoist.plugin</groupId>
+            <artifactId>zi</artifactId>
+            <configuration>
+              <initScript>
+                (System/setProperty "ssh.username" "testuser")
+                (System/setProperty "pallet.test.live" "true")
+                (System/setProperty
+                  "pallet.test.service-name" "${pallet.test.service-name}")
+                (System/setProperty
+                  "pallet.test.cleanup-nodes" "${pallet.test.cleanup-nodes}")
+                (System/setProperty
+                  "pallet.test.image-list" "${pallet.test.image-list}")
+                (System/setProperty
+                  "pallet.test.parallel" "${pallet.test.parallel}")
+                (System/setProperty
+                  "pallet.test.session-type" "${pallet.test.session-type}")
+              </initScript>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+      <properties>
+        <pallet.test.service-name>live-test</pallet.test.service-name>
+        <pallet.test.cleanup-nodes>true</pallet.test.cleanup-nodes>
+        <pallet.test.parallel>false</pallet.test.parallel>
+        <pallet.test.image-list />
+        <pallet.test.session-type />
+      </properties>
+    </profile>
     <profile>
       <id>testuser</id>
       <build>
@@ -141,7 +193,7 @@
   </developers>
 
   <properties>
-    <vmfest.version>0.2.4</vmfest.version>
+    <vmfest.version>0.2.5</vmfest.version>
     <pallet.version>0.7.0</pallet.version>
     <pallet-vmfest.doc.version>0.2</pallet-vmfest.doc.version>
   </properties>

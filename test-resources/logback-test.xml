@@ -78,6 +78,10 @@
   </root>
 
   <logger name="pallet.action-plan" level="DEBUG"/>
+  <logger name="pallet.algo.fsmop" level="INFO"/>
+  <logger name="pallet.algo.fsm.fsm" level="INFO"/>
+  <logger name="pallet.algo.fsm.stateful-fsm" level="INFO"/>
+  <logger name="pallet.algo.fsm.event-machine" level="INFO"/>
   <!-- <logger name="pallet.execute.default-executor" level="TRACE"/> -->
 
 </configuration>
