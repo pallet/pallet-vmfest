@@ -39,8 +39,9 @@
   (do
     (use '[pallet.node :only [tag tags tag taggable?]])
     (defn test-tags [node]
-      (is (taggable? (:node node)))
-      (is (= "vmfest-test-host" (tag (:node node) group-name-tag)))))
+      (when node
+        (is (taggable? (:node node)))
+        (is (= "vmfest-test-host" (tag (:node node) group-name-tag))))))
   (defn test-tags [_]))
 
 (deftest live-test
@@ -54,6 +55,7 @@
           :image image :count 1)}
       (let [service (compute-service :vmfest)
             node (first (:vmfest-test-host node-map))]
+        (clojure.tools.logging/infof "node-types %s" node-types)
         (clojure.tools.logging/infof "node-map %s" node-map)
         (is node)
         (is (seq (nodes service)))
