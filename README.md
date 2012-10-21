@@ -30,7 +30,7 @@ Installation is with maven or your favourite maven repository aware build tool.
 ### lein project.clj
 
 ``` clojure
-:dependencies [[org.cloudhoist/pallet "0.7.0"]
+:dependencies [[org.cloudhoist/pallet "0.7.2"]
                [org.cloudhoist/pallet-vmfest "0.2.0"]]
 :repositories {"sonatype"
                "http://oss.sonatype.org/content/repositories/releases"}
