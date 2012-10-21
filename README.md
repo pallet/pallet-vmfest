@@ -30,7 +30,7 @@ Installation is with maven or your favourite maven repository aware build tool.
 ### lein project.clj
 
 ``` clojure
-:dependencies [[org.cloudhoist/pallet "0.7.0"]
+:dependencies [[org.cloudhoist/pallet "0.7.2"]
                [org.cloudhoist/pallet-vmfest "0.2.0"]]
 :repositories {"sonatype"
                "http://oss.sonatype.org/content/repositories/releases"}
@@ -69,6 +69,22 @@ instructions](https://github.com/tbatchelli/vmfest#install-virtualbox-41x)
 to install and setup VirtualBox to work with VMFest (and Pallet).
 
 ### Defining the Compute Service
+If you don't already have one, create a pallet config file at `~/.pallet/config.clj` with these contents:
+
+``` clojure
+(defpallet :services {:vmfest {:provider "vmfest"}})
+``` 
+
+Or add an entry for vmfest to your existing pallet config file:
+
+``` clojure
+(defpallet
+  :services
+  {:aws {:proivder "aws-ec2"
+         :identity "<your identity>"
+         :credential "<your credential>"}
+   :vmfest {:provider "vmfest"}})
+```
 
 At the REPL you can define the VMFest/VirtualBox compute service the following
 way:
@@ -78,13 +94,6 @@ way:
 (def vmfest (compute-service "vmfest"))
 ```
 
-For a more permanent solution, define the VMFest/VirtualBox service by
-adding a `:vmfest` service definition to your `~/.pallet/config.clj`
-as shown here:
-
-``` clojure
-(defpallet :services {:vmfest {:provider "vmfest"}})
-``` 
 
 ### Installing Images
 
