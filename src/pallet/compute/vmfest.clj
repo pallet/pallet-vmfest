@@ -142,9 +142,12 @@
    [vmfest.virtualbox.enums :as enums]
    [vmfest.virtualbox.image :as image]
    [vmfest.virtualbox.machine :as machine]
+   [vmfest.virtualbox.medium :as medium]
    [vmfest.virtualbox.model :as model]
    [vmfest.virtualbox.session :as session]
-   [vmfest.virtualbox.virtualbox :as virtualbox]))
+   [vmfest.virtualbox.virtualbox :as virtualbox])
+  (:use
+   [clojure.string :only [lower-case]]))
 
 ;; slingshot version compatibility
 (try
@@ -323,6 +326,50 @@
             {:public-key-path nil :private-key-path nil}
             (select-keys meta [:password :sudo-password :no-sudo]))))))))
 
+(def enum-to-kw (comp keyword lower-case str))
+(defmacro doall->> [& args]
+  `(doall (->> ~(last args) ~@(butlast args))))
+
+(when-feature node-hardware
+  (extend-type VmfestNode
+    pallet.node/NodeHardware
+    (hardware [node]
+      (session/with-session (.node node) :shared [session m]
+        {:cpus [{:cores (machine/get-attribute m :cpu-count)}]
+         :ram (machine/get-attribute m :memory-size)
+         :disks (->>
+                 (machine/get-attribute m :medium-attachments)
+                 (map bean)
+                 (map #(dissoc % :class :passthrough))
+                 (doall->>
+                  (map
+                   (fn [a]
+                     (let [a (update-in
+                              a [:medium]
+                              (fn [medium]
+                                (let [m (medium/map-from-IMedium medium nil)]
+                                  (-> m
+                                      (dissoc :children :parent :base :type)
+                                      (update-in
+                                       [:medium-format]
+                                       (comp keyword lower-case #(.getName %)))
+                                      (assoc :medium-type
+                                        (enum-to-kw (:type m)))
+                                      (assoc :size (:logical-size m (:size m)))
+                                      (assoc :physical-size (:size m))
+                                      (update-in [:device-type] enum-to-kw)
+                                      (update-in [:state] enum-to-kw)
+                                      (update-in [:format] enum-to-kw)
+                                      (update-in [:machine-ids]
+                                                 #(vec (map identity %)))))))]
+                       (merge (:medium a)
+                              (-> a
+                                  (dissoc :medium :nonRotational)
+                                  (assoc :ssd (:nonRotational a))))))))
+                 (map (fn [m]
+                        (update-in
+                         m [:type]
+                         (comp keyword lower-case #(.name %))))))}))))
 
 (defn- nil-if-blank [x]
   (if (string/blank? x) nil x))
