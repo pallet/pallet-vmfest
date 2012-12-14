@@ -1,5 +1,14 @@
 # Release Notes
 
+## 0.2.1
+
+- Implement NodeHardware protocol
+
+- Update to vmfest 0.2.5
+
+- Add support for 0.8.0-SNAPSHOT post alpha.1
+
+
 ## 0.2.0
 
 - Use the released version of vmfest 0.2.4.
