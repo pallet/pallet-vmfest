@@ -369,7 +369,8 @@
                  (map (fn [m]
                         (update-in
                          m [:type]
-                         (comp keyword lower-case #(.name %))))))}))))
+                         (comp keyword lower-case #(.name %)))))
+                 vec)}))))
 
 (defn- nil-if-blank [x]
   (if (string/blank? x) nil x))
