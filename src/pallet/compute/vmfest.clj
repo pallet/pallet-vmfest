@@ -1008,8 +1008,10 @@
       :as options}]
   (let [locations (or locations
                       {:local {:node-path node-path :model-path model-path}})
-        images (process-images
-                (merge (manager/load-models :model-path model-path) images))
+        _ (logging/debugf "Loading images from %s" model-path)
+        images (merge (manager/load-models :model-path model-path) images)
+        _ (logging/debugf "Loaded images %s" (keys images))
+        images (process-images images)
         models (merge default-models
                       ;; new hardware models inherit from the
                       ;; base-model
