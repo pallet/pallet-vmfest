@@ -735,7 +735,7 @@ Accessible means that VirtualBox itself can access the machine. In
   (manager/power-down machine)
   (if-let [state (manager/wait-for-machine-state
                   machine [:powered-off] 300000)]
-    (logging/infof "Machine state is %s" state)
+    (logging/debugf "Machine state is %s" state)
     (logging/warn "Failed to wait for power down completion"))
   (manager/wait-for-lockable-session-state machine 2000))
 
@@ -771,9 +771,10 @@ Accessible means that VirtualBox itself can access the machine. In
                      @images template)
                     (throw (RuntimeException.
                             (format
-                             "No matching image for %s in %s"
+                             "No matching image for %s in %s (using %s)"
                              (pr-str (:image group-spec))
-                             @images))))]
+                             @images
+                             locations))))]
       (update-in
        group-spec [:image]
        #(merge
@@ -792,9 +793,10 @@ Accessible means that VirtualBox itself can access the machine. In
                        @images template)
                       (throw (RuntimeException.
                               (format
-                               "No matching image for %s in %s"
+                               "No matching image for %s in %s (using %s)"
                                (pr-str (:image group-spec))
-                               @images))))
+                               @images
+                               locations))))
             group-name (name (:group-name group-spec))
             machines (accessible-machines server) 
             current-machines-in-group (filter
@@ -1053,11 +1055,11 @@ Accessible means that VirtualBox itself can access the machine. In
                          (first available-host-interfaces)))
         local-iface (or default-local-interface
                         (do
-                          (logging/info
+                          (logging/debug
                            "No Local Interface defined. Using vboxnet0")
                           "vboxnet0"))] ;; todo. Automatically discover this
-    (logging/infof "Loaded images: %s" (keys images))
-    (logging/infof
+    (logging/debugf "Loaded images: %s" (keys images))
+    (logging/debugf
      "Using '%s' networking via interface '%s' as defaults for new machines"
      (name default-network-type)
      (if (= default-network-type :local)
