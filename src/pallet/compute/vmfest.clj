@@ -939,6 +939,12 @@ Accessible means that VirtualBox itself can access the machine. In
   (find-images [_ template]
     (all-images-from-template @images template)))
 
+(when-feature compute-service-properties
+  (extend-type VmfestService
+    pallet.compute/ComputeServiceProperties
+    (service-properties [compute]
+      (assoc (bean compute) :provider :vmfest))))
+
 (defmacro add-node-tag []
   (if (has-feature? taggable-nodes)
     '(do
