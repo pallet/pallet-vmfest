@@ -879,11 +879,12 @@ Accessible means that VirtualBox itself can access the machine. In
   (destroy-nodes-in-group
     [compute group-name]
     (let [nodes (locking compute ;; avoid disappearing machines
-                  (filter
-                   #(and
-                     (node-running? %)
-                     (= group-name (manager/get-extra-data % group-name-tag)))
-                   (manager/machines server)))]
+                  (vec
+                   (filter
+                    #(and
+                      (node-running? %)
+                      (= group-name (manager/get-extra-data % group-name-tag)))
+                    (manager/machines server))))]
       (doseq [machine nodes]
         (node-destroy machine))))
 
