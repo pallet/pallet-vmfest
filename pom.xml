@@ -193,8 +193,8 @@
   </developers>
 
   <properties>
-    <vmfest.version>0.2.5</vmfest.version>
-    <pallet.version>0.7.0</pallet.version>
+    <vmfest.version>0.2.6</vmfest.version>
+    <pallet.version>0.7.2</pallet.version>
     <pallet-vmfest.doc.version>0.2</pallet-vmfest.doc.version>
   </properties>
 
