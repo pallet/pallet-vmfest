@@ -237,10 +237,21 @@
     (when-not (empty? meta-str)
       (with-in-str meta-str (read)))))
 
+(defn- node-accessible?
+  "True if the node (vbox Machine) is accessible, false otherwise.
+
+Accessible means that VirtualBox itself can access the machine. In
+  cases in which the Machine is malformed or files are missingn the VM
+  is inaccessible. VBox cannot do much with an inaccessible machine,
+  other than list it, and maybe destroy it."
+  [node]
+  (session/with-no-session node [m]
+    (machine/get-attribute m :accessible?)))
+
 (defn- node-running?
   [node]
   (and
-     (session/with-no-session node [vb-m] (.getAccessible vb-m))
+     (node-accessible? node)
      (= :running (manager/state node))))
 
 (deftype VmfestNode
@@ -732,12 +743,23 @@
   (node-shutdown machine)
   (manager/destroy machine))
 
+(defn- accessible-machines
+  "Returns the VMs that are accessible"
+  [server]
+  (filter node-accessible? (manager/machines server)))
+
 (deftype VmfestService
     [server images locations network-type local-interface bridged-interface
      environment models tag-provider]
   pallet.compute/ComputeService
   (nodes [compute-service]
-    (map #(VmfestNode. % compute-service) (manager/machines server)))
+    ;; we only want to return accessible machines. Pallet is expecting
+    ;; to be able to ask questions about the nodes, for example the
+    ;; group they belong, or their IP addresss. This would fail if the
+    ;; machine is not accessible.
+    ;; NOTE: this means that Pallet is effectively unable to manage
+    ;; inaccessible machines.
+    (map #(VmfestNode. % compute-service) (accessible-machines server)))
 
   (ensure-os-family [compute-service group-spec]
     (logging/debugf "ensure-os-family called with group-spec = %s" group-spec)
@@ -774,9 +796,7 @@
                                (pr-str (:image group-spec))
                                @images))))
             group-name (name (:group-name group-spec))
-            machines (filter
-                      #(session/with-no-session % [vb-m] (.getAccessible vb-m))
-                      (manager/machines server))
+            machines (accessible-machines server) 
             current-machines-in-group (filter
                                        #(= group-name
                                            (manager/get-extra-data
@@ -1056,28 +1076,27 @@
      models
      (or tag-provider (default-tag-provider)))))
 
-;; (defmethod clojure.core/print-method VmfestNode
-;;   [node writer]
-;;   (let [machine (.node node)
-;;         accessible (try (session/with-vbox (:server machine) [_ vbox]
-;;                           (session/with-no-session machine [m]
-;;                             (machine/get-attribute m :accessible?)))
-;;                         (catch Exception _))]
-;;     (cond
-;;       (not accessible)
-;;       (.write writer "Unaccessible vmfest node")
+(defmethod clojure.core/print-method VmfestNode
+  [node writer]
+  (let [machine (.node node)
+        accessible (try (session/with-vbox (:server machine) [_ vbox]
+                          (node-accessible? machine))
+                        (catch Exception _))]
+    (cond
+      (not accessible)
+      (.write writer "Unaccessible vmfest node")
 
-;;       (not
-;;        (->>
-;;         (compute/nodes (.service node))
-;;         (some #(= (:id machine) (:id (.node %))))))
-;;       (.write writer "Unregistered vmfest node")
+      (not
+       (->>
+        (compute/nodes (.service node))
+        (some #(= (:id machine) (:id (.node %))))))
+      (.write writer "Unregistered vmfest node")
 
-;;       :else
-;;       (.write
-;;        writer
-;;        (format
-;;         "%14s\t %14s\t public: %s"
-;;         (try (node/hostname node) (catch Throwable e "unknown"))
-;;         (try (node/group-name node) (catch Throwable e "unknown"))
-;;         (try (node/primary-ip node) (catch Throwable e "unknown")))))))
+      :else
+      (.write
+       writer
+       (format
+        "%14s\t %14s\t public: %s"
+        (try (node/hostname node) (catch Throwable e "unknown"))
+        (try (node/group-name node) (catch Throwable e "unknown"))
+        (try (node/primary-ip node) (catch Throwable e "unknown")))))))
