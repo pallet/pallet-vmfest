@@ -8,7 +8,7 @@
   </parent>
   <groupId>org.cloudhoist</groupId>
   <artifactId>pallet-vmfest</artifactId>
-  <version>0.2.2-SNAPSHOT</version>
+  <version>0.2.3-SNAPSHOT</version>
   <packaging>jar</packaging>
   <name>Pallet vmfest provider</name>
   <description>
@@ -128,6 +128,16 @@
 
   <profiles>
     <profile>
+      <id>ws</id>
+      <dependencies>
+        <dependency>
+          <groupId>org.clojars.tbatchelli</groupId>
+          <artifactId>vboxjws</artifactId>
+          <version>4.2.4</version>
+        </dependency>
+      </dependencies>
+    </profile>
+    <profile>
       <id>live-test</id>
       <build>
         <plugins>
@@ -193,8 +203,8 @@
   </developers>
 
   <properties>
-    <vmfest.version>0.2.5</vmfest.version>
-    <pallet.version>0.7.0</pallet.version>
+    <vmfest.version>0.2.7</vmfest.version>
+    <pallet.version>0.7.2</pallet.version>
     <pallet-vmfest.doc.version>0.2</pallet-vmfest.doc.version>
   </properties>
 

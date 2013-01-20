@@ -20,7 +20,8 @@ command line.
 
 [Documentation][docs] is available.
 
-## Installation
+
+## Installation for VirtualBox 4.2.x
 
 Pallet-vmfest is distributed as a jar, and is available in the
 [sonatype repository][sonatype].
@@ -31,7 +32,7 @@ Installation is with maven or your favourite maven repository aware build tool.
 
 ``` clojure
 :dependencies [[org.cloudhoist/pallet "0.7.2"]
-               [org.cloudhoist/pallet-vmfest "0.2.1"]]
+               [org.cloudhoist/pallet-vmfest "0.2.2"]]
 :repositories {"sonatype"
                "http://oss.sonatype.org/content/repositories/releases"}
 ```
@@ -48,7 +49,7 @@ Installation is with maven or your favourite maven repository aware build tool.
   <dependency>
     <groupId>org.cloudhoist</groupId>
     <artifactId>pallet-vmfest</artifactId>
-    <version>0.2.1</version>
+    <version>0.2.2</version>
   </dependency>
 <dependencies>
 
@@ -60,12 +61,16 @@ Installation is with maven or your favourite maven repository aware build tool.
 </repositories>
 ```
 
+### Installation for VirtualBox 4.1.x
+
+The version `0.2.1` of `pallet-vmfest` supports VirtualBox 4.1.x only.
+
 ## Usage
 
 ### Prerequisites
 
 Follow [these
-instructions](https://github.com/tbatchelli/vmfest#install-virtualbox-41x)
+instructions](https://github.com/tbatchelli/vmfest#install-virtualbox-42x)
 to install and setup VirtualBox to work with VMFest (and Pallet).
 
 ### Defining the Compute Service
@@ -234,7 +239,7 @@ Licensed under [EPL](http://www.eclipse.org/legal/epl-v10.html)
 
 [Contributors](https://www.ohloh.net/p/pallet-clj/contributors)
 
-Copyright 2010, 2011, 2012  Hugo Duncan and Antoni Batchelli
+Copyright 2010, 2011, 2012, 2013  Hugo Duncan and Antoni Batchelli
 
 
 [palletops]: http://palletops.com "Pallet site"

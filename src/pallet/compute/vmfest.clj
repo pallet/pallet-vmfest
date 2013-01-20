@@ -237,10 +237,21 @@
     (when-not (empty? meta-str)
       (with-in-str meta-str (read)))))
 
+(defn- node-accessible?
+  "True if the node (vbox Machine) is accessible, false otherwise.
+
+Accessible means that VirtualBox itself can access the machine. In
+  cases in which the Machine is malformed or files are missingn the VM
+  is inaccessible. VBox cannot do much with an inaccessible machine,
+  other than list it, and maybe destroy it."
+  [node]
+  (session/with-no-session node [m]
+    (machine/get-attribute m :accessible?)))
+
 (defn- node-running?
   [node]
   (and
-     (session/with-no-session node [vb-m] (.getAccessible vb-m))
+     (node-accessible? node)
      (= :running (manager/state node))))
 
 (deftype VmfestNode
@@ -724,7 +735,7 @@
   (manager/power-down machine)
   (if-let [state (manager/wait-for-machine-state
                   machine [:powered-off] 300000)]
-    (logging/infof "Machine state is %s" state)
+    (logging/debugf "Machine state is %s" state)
     (logging/warn "Failed to wait for power down completion"))
   (manager/wait-for-lockable-session-state machine 2000))
 
@@ -732,12 +743,23 @@
   (node-shutdown machine)
   (manager/destroy machine))
 
+(defn- accessible-machines
+  "Returns the VMs that are accessible"
+  [server]
+  (filter node-accessible? (manager/machines server)))
+
 (deftype VmfestService
     [server images locations network-type local-interface bridged-interface
      environment models tag-provider]
   pallet.compute/ComputeService
   (nodes [compute-service]
-    (map #(VmfestNode. % compute-service) (manager/machines server)))
+    ;; we only want to return accessible machines. Pallet is expecting
+    ;; to be able to ask questions about the nodes, for example the
+    ;; group they belong, or their IP addresss. This would fail if the
+    ;; machine is not accessible.
+    ;; NOTE: this means that Pallet is effectively unable to manage
+    ;; inaccessible machines.
+    (map #(VmfestNode. % compute-service) (accessible-machines server)))
 
   (ensure-os-family [compute-service group-spec]
     (logging/debugf "ensure-os-family called with group-spec = %s" group-spec)
@@ -749,9 +771,10 @@
                      @images template)
                     (throw (RuntimeException.
                             (format
-                             "No matching image for %s in %s"
+                             "No matching image for %s in %s (using %s)"
                              (pr-str (:image group-spec))
-                             @images))))]
+                             @images
+                             locations))))]
       (update-in
        group-spec [:image]
        #(merge
@@ -770,13 +793,12 @@
                        @images template)
                       (throw (RuntimeException.
                               (format
-                               "No matching image for %s in %s"
+                               "No matching image for %s in %s (using %s)"
                                (pr-str (:image group-spec))
-                               @images))))
+                               @images
+                               locations))))
             group-name (name (:group-name group-spec))
-            machines (filter
-                      #(session/with-no-session % [vb-m] (.getAccessible vb-m))
-                      (manager/machines server))
+            machines (accessible-machines server) 
             current-machines-in-group (filter
                                        #(= group-name
                                            (manager/get-extra-data
@@ -857,11 +879,12 @@
   (destroy-nodes-in-group
     [compute group-name]
     (let [nodes (locking compute ;; avoid disappearing machines
-                  (filter
-                   #(and
-                     (node-running? %)
-                     (= group-name (manager/get-extra-data % group-name-tag)))
-                   (manager/machines server)))]
+                  (vec
+                   (filter
+                    #(and
+                      (node-running? %)
+                      (= group-name (manager/get-extra-data % group-name-tag)))
+                    (manager/machines server))))]
       (doseq [machine nodes]
         (node-destroy machine))))
 
@@ -916,6 +939,12 @@
     ((or @images {}) image-kw))
   (find-images [_ template]
     (all-images-from-template @images template)))
+
+(when-feature compute-service-properties
+  (extend-type VmfestService
+    pallet.compute/ComputeServiceProperties
+    (service-properties [compute]
+      (assoc (bean compute) :provider :vmfest))))
 
 (defmacro add-node-tag []
   (if (has-feature? taggable-nodes)
@@ -1033,11 +1062,11 @@
                          (first available-host-interfaces)))
         local-iface (or default-local-interface
                         (do
-                          (logging/info
+                          (logging/debug
                            "No Local Interface defined. Using vboxnet0")
                           "vboxnet0"))] ;; todo. Automatically discover this
-    (logging/infof "Loaded images: %s" (keys images))
-    (logging/infof
+    (logging/debugf "Loaded images: %s" (keys images))
+    (logging/debugf
      "Using '%s' networking via interface '%s' as defaults for new machines"
      (name default-network-type)
      (if (= default-network-type :local)
@@ -1056,28 +1085,27 @@
      models
      (or tag-provider (default-tag-provider)))))
 
-;; (defmethod clojure.core/print-method VmfestNode
-;;   [node writer]
-;;   (let [machine (.node node)
-;;         accessible (try (session/with-vbox (:server machine) [_ vbox]
-;;                           (session/with-no-session machine [m]
-;;                             (machine/get-attribute m :accessible?)))
-;;                         (catch Exception _))]
-;;     (cond
-;;       (not accessible)
-;;       (.write writer "Unaccessible vmfest node")
+(defmethod clojure.core/print-method VmfestNode
+  [node writer]
+  (let [machine (.node node)
+        accessible (try (session/with-vbox (:server machine) [_ vbox]
+                          (node-accessible? machine))
+                        (catch Exception _))]
+    (cond
+      (not accessible)
+      (.write writer "Unaccessible vmfest node")
 
-;;       (not
-;;        (->>
-;;         (compute/nodes (.service node))
-;;         (some #(= (:id machine) (:id (.node %))))))
-;;       (.write writer "Unregistered vmfest node")
+      (not
+       (->>
+        (compute/nodes (.service node))
+        (some #(= (:id machine) (:id (.node %))))))
+      (.write writer "Unregistered vmfest node")
 
-;;       :else
-;;       (.write
-;;        writer
-;;        (format
-;;         "%14s\t %14s\t public: %s"
-;;         (try (node/hostname node) (catch Throwable e "unknown"))
-;;         (try (node/group-name node) (catch Throwable e "unknown"))
-;;         (try (node/primary-ip node) (catch Throwable e "unknown")))))))
+      :else
+      (.write
+       writer
+       (format
+        "%14s\t %14s\t public: %s"
+        (try (node/hostname node) (catch Throwable e "unknown"))
+        (try (node/group-name node) (catch Throwable e "unknown"))
+        (try (node/primary-ip node) (catch Throwable e "unknown")))))))
