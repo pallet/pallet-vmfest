@@ -1,5 +1,22 @@
 # Release Notes
 
+## 0.2.2
+
+- Add ComputeServiceProperties implementation
+
+- Adjust logging
+
+- Update to vmfest 0.2.7 which supports VirtualBox 4.2.x.
+
+- Ignore inaccessible Machines
+  VirtualBox Machines that are not accessible can't be inspected. Pallet 
+  assumes it can query all the nodes, but this breaks if the node (machine)
+  is not accessible.
+
+  - Make pallet.compute/nodes return accessible nodes only.
+  - unify the way in which machine accessibility is assessed.
+
+
 ## 0.2.1
 
 - Implement NodeHardware protocol
