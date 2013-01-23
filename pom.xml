@@ -8,7 +8,7 @@
   </parent>
   <groupId>org.cloudhoist</groupId>
   <artifactId>pallet-vmfest</artifactId>
-  <version>0.2.3-SNAPSHOT</version>
+  <version>0.3.0-SNAPSHOT</version>
   <packaging>jar</packaging>
   <name>Pallet vmfest provider</name>
   <description>
@@ -203,7 +203,7 @@
   </developers>
 
   <properties>
-    <vmfest.version>0.2.7</vmfest.version>
+    <vmfest.version>0.2.8</vmfest.version>
     <pallet.version>0.7.2</pallet.version>
     <pallet-vmfest.doc.version>0.2</pallet-vmfest.doc.version>
   </properties>
