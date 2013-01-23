@@ -1,5 +1,11 @@
 # Release Notes
 
+## 0.2.3
+
+- Update to vmfest 0.2.8
+  This is to import the fix that ensures the models are immutable before
+  using them.
+
 ## 0.2.2
 
 - Add ComputeServiceProperties implementation
