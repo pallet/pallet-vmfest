@@ -1,5 +1,10 @@
 # Release Notes
 
+## 0.2.4
+
+- Update to vmfest 0.2.9
+  Removes a logback.xml configuration file.
+
 ## 0.2.3
 
 - Update to vmfest 0.2.8
