@@ -131,6 +131,7 @@
    [pallet.compute :as compute]
    [pallet.compute.implementation :as implementation]
    [pallet.compute.jvm :as jvm]
+   [pallet.compute.vmfest.properties]   ; needs to be before vmfest
    [pallet.environment :as environment]
    [pallet.execute :as execute]
    [pallet.futures :as futures]
