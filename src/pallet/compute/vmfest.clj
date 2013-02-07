@@ -384,6 +384,26 @@ Accessible means that VirtualBox itself can access the machine. In
                          (comp keyword lower-case #(.name %)))))
                  vec)}))))
 
+(when-feature node-proxy
+  (extend-type VmfestNode
+    pallet.node/NodeProxy
+    (proxy [node]
+        (let [n (.node node)
+              proxy (->>
+                     (manager/get-network-adapters n)
+                     (mapcat #(get-in % [:nat :forwards]))
+                     (filter #(= (str (node/ssh-port node)) (:guest-port %)))
+                     first)
+              port (:host-port proxy)]
+          (when-not (string/blank? port)
+            (try
+              {:port (Integer/parseInt port)
+               :host (or (:host-ip proxy) "127.0.0.1")}
+              (catch Exception e
+                (logging/warnf
+                 e "Could not decode host port for proxy from %s"
+                 port))))))))
+
 (defn- nil-if-blank [x]
   (if (string/blank? x) nil x))
 
