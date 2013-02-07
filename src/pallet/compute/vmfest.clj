@@ -642,7 +642,7 @@ Accessible means that VirtualBox itself can access the machine. In
   [images template]
   (logging/debugf "Looking for %s in %s" template images)
   (if-let [image-id (:image-id template)]
-    image-id
+    (keyword image-id)
     (ffirst (all-images-from-template images template))))
 
 (defn serial-create-nodes
