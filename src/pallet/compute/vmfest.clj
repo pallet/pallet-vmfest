@@ -953,7 +953,8 @@ Accessible means that VirtualBox itself can access the machine. In
   ImageManager
   (install-image
     [compute url {:as options}]
-    (logging/infof "installing image to %s" (:model-path locations))
+    (logging/debugf "installing image to %s with options %s"
+                    (:model-path locations) options)
     (when-let [job (apply
                     image/setup-model
                     url server :models-dir (:model-path locations)
@@ -1088,6 +1089,7 @@ Accessible means that VirtualBox itself can access the machine. In
            node-path (manager/default-node-path)
            default-network-type :local}
       :as options}]
+
   (let [locations (or locations
                       {:local {:node-path node-path :model-path model-path}})
         _ (logging/debugf "Loading images from %s" model-path)
