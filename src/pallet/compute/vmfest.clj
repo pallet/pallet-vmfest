@@ -712,6 +712,20 @@ Accessible means that VirtualBox itself can access the machine. In
           ;; todo: allow overriding the interface here
           }))
 
+(defn find-free-port
+  "Find a free port.  Note that this will not prevent conflicts. It's just a
+   way of reducing them."
+  []
+  (try
+    (let [socket (java.net.ServerSocket. 0)]
+      (try
+        (.getLocalPort (doto socket (.setReuseAddress true)))
+        (finally
+          (when socket (.close socket)))))
+    (catch Exception _
+      (+ 1024 (rand-int 60000)))))
+
+
 (defn- selected-hardware-model
   [{:keys [hardware-id hardware-model] :as template} models storage-overide
    default-network-type default-nat-rules default-local-interface
@@ -748,7 +762,13 @@ Accessible means that VirtualBox itself can access the machine. In
                        ;; nat only networking
                        (= network-type :nat)
                        [{:attachment-type :nat
-                         :nat-rules default-nat-rules}]
+                         :nat-rules
+                         (conj
+                          default-nat-rules
+                          {:name "ssh"
+                           :protocol :tcp
+                           :host-ip "" :host-port (find-free-port)
+                           :guest-ip "" :guest-port 22})}]
                        ;; bridged networking
                        :else
                        [{:attachment-type :bridged
