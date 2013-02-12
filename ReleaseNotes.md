@@ -1,5 +1,25 @@
 # Release Notes
 
+## 0.3.0-alpha.1
+
+- Update to vmfest 0.3.0-alpha.2
+
+- Update add-vmfest-image task to take options
+  Allows specification of os-family, os-version and os-64-bit for import of
+  vagrant .box images.
+
+- Set up nat rules for ssh forwarding when using nat
+
+- Propogate :nat-rules from meta files
+
+- Ensure image-id is converted to a keyword
+
+- Add NodeProxy protocol support
+
+- Add xpcom profile to pom
+
+- Try and guess the vbox.home directory
+
 ## 0.2.4
 
 - Update to vmfest 0.2.9
