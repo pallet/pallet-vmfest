@@ -384,6 +384,26 @@ Accessible means that VirtualBox itself can access the machine. In
                          (comp keyword lower-case #(.name %)))))
                  vec)}))))
 
+(when-feature node-proxy
+  (extend-type VmfestNode
+    pallet.node/NodeProxy
+    (proxy [node]
+        (let [n (.node node)
+              proxy (->>
+                     (manager/get-network-adapters n)
+                     (mapcat #(get-in % [:nat :forwards]))
+                     (filter #(= (str (node/ssh-port node)) (:guest-port %)))
+                     first)
+              port (:host-port proxy)]
+          (when-not (string/blank? port)
+            (try
+              {:port (Integer/parseInt port)
+               :host (or (:host-ip proxy) "127.0.0.1")}
+              (catch Exception e
+                (logging/warnf
+                 e "Could not decode host port for proxy from %s"
+                 port))))))))
+
 (defn- nil-if-blank [x]
   (if (string/blank? x) nil x))
 
@@ -622,7 +642,7 @@ Accessible means that VirtualBox itself can access the machine. In
   [images template]
   (logging/debugf "Looking for %s in %s" template images)
   (if-let [image-id (:image-id template)]
-    image-id
+    (keyword image-id)
     (ffirst (all-images-from-template images template))))
 
 (defn serial-create-nodes
@@ -692,38 +712,65 @@ Accessible means that VirtualBox itself can access the machine. In
           ;; todo: allow overriding the interface here
           }))
 
+(defn find-free-port
+  "Find a free port.  Note that this will not prevent conflicts. It's just a
+   way of reducing them."
+  []
+  (try
+    (let [socket (java.net.ServerSocket. 0)]
+      (try
+        (.getLocalPort (doto socket (.setReuseAddress true)))
+        (finally
+          (when socket (.close socket)))))
+    (catch Exception _
+      (+ 1024 (rand-int 60000)))))
+
+
 (defn- selected-hardware-model
   [{:keys [hardware-id hardware-model] :as template} models storage-overide
-   default-network-type default-local-interface default-bridged-interface]
+   default-network-type default-nat-rules default-local-interface
+   default-bridged-interface]
   (let [model
         (cond
-         ;; if a model is specified, we take it
-         hardware-model (merge (second (first models)) hardware-model)
-         ;; if not, is a model key provided?
-         hardware-id (hardware-id models)
-         ;; we'll build the model from the template then.
-         :else (hardware-model-from-template
+          ;; if a model is specified, we take it
+          hardware-model (merge (second (first models)) hardware-model)
+          ;; if not, is a model key provided?
+          hardware-id (hardware-id models)
+          ;; we'll build the model from the template then.
+          :else (hardware-model-from-template
                  ;; use the first model in the list
-                (second (first models))
-                template
-                default-network-type
-                ;; pass the right interface for network-type
-                (if (= :local default-network-type)
-                  default-local-interface
-                  default-bridged-interface)))
+                 (second (first models))
+                 template
+                 default-network-type
+                 ;; pass the right interface for network-type
+                 (if (= :local default-network-type)
+                   default-local-interface
+                   default-bridged-interface)))
         ;; if no network-type is speficied at this point, use the
         ;; default
         network-type (or (:network-type model) default-network-type)]
-    (merge model
+    (merge (dissoc model :network-type)
            storage-overide
            ;; add the right network interface configuration for the final
            ;; network-type
-           {:network (if (= network-type :local)
+           {:network (cond
                        ;; local networking
+                       (= network-type :local)
                        [{:attachment-type :host-only
                          :host-only-interface default-local-interface}
                         {:attachment-type :nat}]
+                       ;; nat only networking
+                       (= network-type :nat)
+                       [{:attachment-type :nat
+                         :nat-rules
+                         (conj
+                          default-nat-rules
+                          {:name "ssh"
+                           :protocol :tcp
+                           :host-ip "" :host-port (find-free-port)
+                           :guest-ip "" :guest-port 22})}]
                        ;; bridged networking
+                       :else
                        [{:attachment-type :bridged
                          :host-interface default-bridged-interface}])})))
 
@@ -799,7 +846,7 @@ Accessible means that VirtualBox itself can access the machine. In
                                @images
                                locations))))
             group-name (name (:group-name group-spec))
-            machines (accessible-machines server) 
+            machines (accessible-machines server)
             current-machines-in-group (filter
                                        #(= group-name
                                            (manager/get-extra-data
@@ -827,12 +874,15 @@ Accessible means that VirtualBox itself can access the machine. In
                                     parallel-create-nodes)
             image-map (image @images)
             network-type (or (:network-type (image @images)) network-type)
+            nat-rules (:nat-rules (image @images))
+            image=hardware-overrides ()
             final-hardware-model (selected-hardware-model
                                   template
                                   models
                                   (select-keys
                                    image-map [:storage :boot-mount-point])
                                   network-type
+                                  nat-rules
                                   local-interface
                                   bridged-interface)]
         (logging/debug (str "current-machine-names " current-machine-names))
@@ -903,9 +953,12 @@ Accessible means that VirtualBox itself can access the machine. In
   ImageManager
   (install-image
     [compute url {:as options}]
-    (logging/infof "installing image to %s" (:model-path locations))
-    (when-let [job (image/setup-model
-                    url server :models-dir (:model-path locations))]
+    (logging/debugf "installing image to %s with options %s"
+                    (:model-path locations) options)
+    (when-let [job (apply
+                    image/setup-model
+                    url server :models-dir (:model-path locations)
+                    (apply concat options))]
       (swap! images merge (:meta job))))
   (publish-image [service image-kw blobstore container {:keys [path]}]
     (if-let [image (image-kw @images)]
@@ -1036,6 +1089,7 @@ Accessible means that VirtualBox itself can access the machine. In
            node-path (manager/default-node-path)
            default-network-type :local}
       :as options}]
+
   (let [locations (or locations
                       {:local {:node-path node-path :model-path model-path}})
         _ (logging/debugf "Loading images from %s" model-path)

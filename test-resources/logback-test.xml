@@ -3,6 +3,9 @@
     <encoder>
       <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
     </encoder>
+    <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+      <level>INFO</level>
+    </filter>
   </appender>
 
   <appender name="COMPUTEFILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
@@ -73,7 +76,7 @@
     <appender-ref ref="VMFESTFILE" />
   </logger>
 
-  <root level="INFO">
+  <root level="DEBUG">
     <appender-ref ref="CONSOLE" />
   </root>
 
