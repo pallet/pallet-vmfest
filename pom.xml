@@ -201,9 +201,9 @@
   </developers>
 
   <properties>
-    <vmfest.version>0.2.9</vmfest.version>
+    <vmfest.version>0.3.0-alpha.2</vmfest.version>
     <pallet.version>0.7.2</pallet.version>
-    <pallet-vmfest.doc.version>0.2</pallet-vmfest.doc.version>
+    <pallet-vmfest.doc.version>0.3</pallet-vmfest.doc.version>
   </properties>
 
 </project>
