@@ -1,20 +1,48 @@
 (ns pallet.task.add-vmfest-image
   "A task for adding vmfest images"
   (:require
+   [clojure.tools.logging :refer [debugf]]
    [pallet.compute :as compute]
    [pallet.compute.vmfest :as vmfest]
-   [pallet.core :as core]))
+   [pallet.core :as core]
+   [pallet.task :refer [abort]]
+   [pallet.task-utils :refer [process-args]]
+   [pallet.utils :refer [apply-map]]))
 
-(defn as-str
-  [sym]
-  (if-let [n (namespace sym)]
-    (str n "/" (name sym))
-    (name sym)))
+(def switches
+  [["-o" "--os-family" "Specify the os family"]
+   ["-v" "--os-version" "Specify the os version"]
+   ["-l" "--os-64-bit" "Specify the os is 64 bit"
+    :flag true :default true]])
 
-(defn add-vmfest-image
-  "Add an image to the list of vmfest images."
-  {:help-arglists '[[image-url]]}
-  [request image-url]
-  (let [service (:compute request)]
+(def help
+  (str "Install an image for vmfest.\n"
+       \newline
+       "For vagrant .box files, you will meed to specify the os-family,\n"
+       "os-version, and os-64-bit, as these are not available in the\n"
+       ".box file."
+       \newline
+       "add-vmfest-image image-url"
+       \newline
+       (last (process-args "nodes" nil switches))))
+
+(defn process-options
+  [options]
+  (let [kw-opts (select-keys options [:os-family])]
+    (merge
+     options
+     (zipmap (keys kw-opts) (map keyword (vals kw-opts))))))
+
+(defn ^{:doc help} add-vmfest-image
+  {:help-arglists []}
+  [request & args]
+  (let [[options [image-url]]
+        (process-args "add-vmfest=image" args switches)
+        service (:compute request)]
+    (when-not image-url
+      (abort "Must supply an image-url"))
     (println "Downloading" (name image-url) "...")
-    (vmfest/add-image service (as-str image-url))))
+    (debugf "add-vmfest=image url %s options %s"
+            image-url (process-options options))
+    (apply-map vmfest/add-image service image-url
+               {:meta (process-options options)})))

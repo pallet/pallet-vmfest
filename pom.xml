@@ -64,6 +64,13 @@
           <skip>true</skip>
         </configuration>
       </plugin>
+      <plugin>
+        <artifactId>maven-release-plugin</artifactId>
+        <version>2.2.2</version>
+        <configuration>
+          <releaseProfiles>xpcom</releaseProfiles>
+        </configuration>
+      </plugin>
     </plugins>
   </build>
 
@@ -101,21 +108,9 @@
     </dependency>
 
     <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-api</artifactId>
-      <version>1.6.1</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>ch.qos.logback</groupId>
-      <artifactId>logback-core</artifactId>
-      <version>1.0.0</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
       <groupId>ch.qos.logback</groupId>
       <artifactId>logback-classic</artifactId>
-      <version>1.0.0</version>
+      <version>1.0.9</version>
       <scope>test</scope>
     </dependency>
 
@@ -133,6 +128,16 @@
         <dependency>
           <groupId>org.clojars.tbatchelli</groupId>
           <artifactId>vboxjws</artifactId>
+          <version>4.2.4</version>
+        </dependency>
+      </dependencies>
+    </profile>
+    <profile>
+      <id>xpcom</id>
+      <dependencies>
+        <dependency>
+          <groupId>org.clojars.tbatchelli</groupId>
+          <artifactId>vboxjxpcom</artifactId>
           <version>4.2.4</version>
         </dependency>
       </dependencies>
@@ -203,9 +208,9 @@
   </developers>
 
   <properties>
-    <vmfest.version>0.2.9</vmfest.version>
+    <vmfest.version>0.3.0-alpha.2</vmfest.version>
     <pallet.version>0.7.2</pallet.version>
-    <pallet-vmfest.doc.version>0.2</pallet-vmfest.doc.version>
+    <pallet-vmfest.doc.version>0.3</pallet-vmfest.doc.version>
   </properties>
 
 </project>
