@@ -1,5 +1,11 @@
 # Release Notes
 
+## 0.3.0-alpha.2
+
+- Correct vbox.home processing when property set
+  An existing value for the property was being treated as a file.  Also
+  adds logging of the value used and it's provenance.
+
 ## 0.3.0-alpha.1
 
 - Update to vmfest 0.3.0-alpha.2

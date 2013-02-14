@@ -15,9 +15,9 @@ echo -n "commiting release notes and readme.  enter to continue:" && read x \
 && git add ReleaseNotes.md README.md \
 && git commit -m "Updated release notes and readme for $version" \
 && echo -n "Peform release.  enter to continue:" && read x \
-&& mvn release:clean \
-&& mvn release:prepare \
-&& mvn release:perform \
+&& mvn release:clean -Pxpcom \
+&& mvn release:prepare -Pxpcom \
+&& mvn release:perform -Pxpcom \
 && git flow release finish -n $version \
 && mvn nexus:staging-close \
 && mvn nexus:staging-promote
