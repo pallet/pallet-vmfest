@@ -376,7 +376,8 @@ Accessible means that VirtualBox itself can access the machine. In
                                                  #(vec (map identity %)))))))]
                        (merge (:medium a)
                               (-> a
-                                  (dissoc :medium :nonRotational)
+                                  (dissoc :medium :nonRotational :wrapped
+                                          :typedWrapped)
                                   (assoc :ssd (:nonRotational a))))))))
                  (map (fn [m]
                         (update-in
