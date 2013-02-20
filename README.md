@@ -80,7 +80,7 @@ way:
 
 ``` clojure
 (use '[pallet.configure :only [compute-service]])
-(def vmfest (compute-service "vmfest"))
+(def vmfest (compute-service "vmfest" nil nil))
 ```
 
 For a more permanent solution, define the VMFest/VirtualBox service by
