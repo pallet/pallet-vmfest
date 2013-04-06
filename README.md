@@ -32,7 +32,7 @@ Installation is with maven or your favourite maven repository aware build tool.
 
 ``` clojure
 :dependencies [[org.cloudhoist/pallet "0.7.2"]
-               [org.cloudhoist/pallet-vmfest "0.3.0-alpha.2"]]
+               [org.cloudhoist/pallet-vmfest "0.3.0-alpha.3"]]
 :repositories {"sonatype"
                "http://oss.sonatype.org/content/repositories/releases"}
 ```
@@ -49,7 +49,7 @@ Installation is with maven or your favourite maven repository aware build tool.
   <dependency>
     <groupId>org.cloudhoist</groupId>
     <artifactId>pallet-vmfest</artifactId>
-    <version>0.3.0-alpha.2</version>
+    <version>0.3.0-alpha.3</version>
   </dependency>
 <dependencies>
 
@@ -80,7 +80,7 @@ way:
 
 ``` clojure
 (use '[pallet.configure :only [compute-service]])
-(def vmfest (compute-service "vmfest"))
+(def vmfest (compute-service "vmfest" nil nil))
 ```
 
 For a more permanent solution, define the VMFest/VirtualBox service by

@@ -12,8 +12,7 @@
 (def switches
   [["-o" "--os-family" "Specify the os family"]
    ["-v" "--os-version" "Specify the os version"]
-   ["-l" "--os-64-bit" "Specify the os is 64 bit"
-    :flag true :default true]])
+   ["-l" "--os-64-bit" "Specify the os is 64 bit"]])
 
 (def help
   (str "Install an image for vmfest.\n"
@@ -44,5 +43,9 @@
     (println "Downloading" (name image-url) "...")
     (debugf "add-vmfest=image url %s options %s"
             image-url (process-options options))
-    (apply-map vmfest/add-image service image-url
-               {:meta (process-options options)})))
+    (let [options (process-options options)]
+      (apply-map vmfest/add-image service image-url
+                 ;; do not pass an empty :meta map when there are no
+                 ;; options, as for vmfest, an empty map means you
+                 ;; want the meta to be empty.
+                 (if (seq options) {:meta options} {})))))
