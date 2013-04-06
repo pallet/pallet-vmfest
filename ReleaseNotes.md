@@ -1,5 +1,16 @@
 # Release Notes
 
+## 0.3.0-alpha.3
+
+- Update to vmfest 0.3.0-alpha.3
+
+- Fix image install from 'lein pallet' where .meta was ignored.
+  This fix adds the requirement to always specify the 'os-64-bit' when 
+  installing Vagrant boxes.
+
+- Remove vbox objects from hardware map
+  When using xpcom, the :wrapped and :typedWrapped fields were showing up.
+
 ## 0.3.0-alpha.2
 
 - Correct vbox.home processing when property set
