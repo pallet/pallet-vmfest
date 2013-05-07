@@ -1,12 +1,10 @@
 /target
-/lib
 /classes
 /checkouts
 /logs
 /doc
 pom.xml
 pom.xml.asc
-*.jar
 *.class
 .lein-deps-sum
 .lein-failures

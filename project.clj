@@ -3,4 +3,5 @@
   :url "https://github.com/pallet/"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
-  :dependencies [[vmfest "0.3.0-alpha.3"]])
+  :dependencies [[vmfest "0.3.0-alpha.4"]
+                 [org.tcrawley/dynapath "0.2.3"]])
