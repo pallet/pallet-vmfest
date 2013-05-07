@@ -353,7 +353,7 @@ Accessible means that VirtualBox itself can access the machine. In
     (into attributes {:ip ip :group-name group-name}) ))
 
 (defn- node-infos [compute-service]
-  (let [nodes (manager/machines compute-service)]
+  (let [nodes (manager/managed-machines compute-service)]
     (map node-data nodes)))
 
 (defn- connected-network-slots
@@ -681,20 +681,35 @@ Accessible means that VirtualBox itself can access the machine. In
 (defn- accessible-machines
   "Returns the VMs that are accessible"
   [server]
-  (filter node-accessible? (manager/machines server)))
+  (filter node-accessible? (manager/managed-machines server)))
+
+(defn- operable-machines
+  "Returns VMS that are accessible and running"
+  [server]
+  (filter #(and (node-accessible? %) (node-running? %))
+          (manager/managed-machines server)))
+
+(defn- inaccessible-machines
+  [server]
+  (filter (complement node-accessible?) (manager/managed-machines server)))
+
+(defn- inoperable-machines
+  [server]
+  (filter #(not (and (node-accessible? %) (node-running? %)))
+          (manager/managed-machines server)))
 
 (deftype VmfestService
     [server images locations network-type local-interface bridged-interface
      environment models tag-provider]
   pallet.compute/ComputeService
   (nodes [compute-service]
-    ;; we only want to return accessible machines. Pallet is expecting
+    ;; we only want to return operable machines. Pallet is expecting
     ;; to be able to ask questions about the nodes, for example the
     ;; group they belong, or their IP addresss. This would fail if the
     ;; machine is not accessible.
     ;; NOTE: this means that Pallet is effectively unable to manage
-    ;; inaccessible machines.
-    (map #(VmfestNode. % compute-service) (accessible-machines server)))
+    ;; inaccessible machines or machines that are stopped.
+    (map #(VmfestNode. % compute-service) (operable-machines server)))
 
   (ensure-os-family [compute-service group-spec]
     (logging/debugf "ensure-os-family called with group-spec = %s" group-spec)
@@ -733,7 +748,7 @@ Accessible means that VirtualBox itself can access the machine. In
                                @images
                                locations))))
             group-name (name (:group-name group-spec))
-            machines (accessible-machines server)
+            machines (operable-machines server)
             current-machines-in-group (filter
                                        #(= group-name
                                            (manager/get-extra-data
@@ -816,13 +831,15 @@ Accessible means that VirtualBox itself can access the machine. In
 
   (destroy-nodes-in-group
     [compute group-name]
+    ;; garbage collect inaccessible machines
+    (if-let [broken-vms (inaccessible-machines server)]
+      (doseq [machine broken-vms]
+        (manager/destroy machine)))
     (let [nodes (locking compute ;; avoid disappearing machines
                   (vec
                    (filter
-                    #(and
-                      (node-running? %)
-                      (= group-name (manager/get-extra-data % group-name-tag)))
-                    (manager/machines server))))]
+                    #(= group-name (manager/get-extra-data % group-name-tag))
+                    (operable-machines server))))]
       (doseq [machine nodes]
         (node-destroy machine))))
 
