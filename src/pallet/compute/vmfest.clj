@@ -156,6 +156,14 @@
   (catch Exception _
     (use '[slingshot.core :only [throw+ try+]])))
 
+
+(defn add-image
+  "Add an image to the images available. The image will be installed from the
+   specified `url-string`."
+  [compute url-string & {:as options}]
+  (let [the-fn (ns-resolve 'pallet.compute.vmfest.service 'add-image)]
+    (apply the-fn compute url-string options)))
+
 ;;;; Compute service SPI
 (defn supported-providers []
   ["vmfest"])
@@ -171,6 +179,8 @@
     (.deleteOnExit f)
     (with-open [is (.getContent jar-url)] (copy is f))
     (.toURL f)))
+
+
 
 (defn add-vbox-to-classpath
   "If there is no vboxj*.jar library in the current classpath, it will
@@ -215,9 +225,11 @@
                    ;; copy the vboxj* jar from the pallet-vmfest jar
                    ;; into a temp location, and then add such location
                    ;; to the classloader. java, the things you make me
-                   ;; do! 
+                   ;; do!
                    file-path (extract-jar jar-path)
-                   cl (clojure.lang.RT/baseLoader)]
+                   ;; the classloader where to load this jar
+                   cl  (or (.getClassLoader clojure.lang.RT)
+                           (.getContextClassLoader (Thread/currentThread)))]
                (dp/add-classpath-url cl file-path)))))
 
 ;; A NOTE about this implementation

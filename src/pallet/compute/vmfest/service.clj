@@ -1,3 +1,14 @@
+;; you should not try to load this namespace if no vboxj*.jar is in
+;; the classpath.
+(require 'vmfest.virtualbox.version)
+(let [vbox-load-exception
+      (Exception.
+       (str "No VirtualBox library loaded. This namespace can only be "
+            "referred to *after* a vmfest provider is initialized or if "
+            "a vboxjws.jar or vboxjxpcom.jar library is in the classpath."))]
+  (when (= :error (vmfest.virtualbox.version/vbox-binding))
+    (throw vbox-load-exception)))
+
 (ns pallet.compute.vmfest.service
  "Contains the bulk of the implementation of `pallet.compute.vmfest`.
 This is so all the references to vmfest are contained, thus allowing
