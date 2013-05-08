@@ -164,6 +164,28 @@
   (let [the-fn (ns-resolve 'pallet.compute.vmfest.service 'add-image)]
     (apply the-fn compute url-string options)))
 
+(defn find-images
+  "Determine the best match image for a given image template"
+  [service template]
+  ((ns-resolve 'pallet.compute.vmfest.service 'find-images) service template))
+
+(defn install-image
+  "Install the image from the specified `url`"
+  [service url {:as options}]
+  (apply (ns-resolve 'pallet.compute.vmfest.service 'install-image)
+         service url options))
+
+(defn publish-image
+  "Publish the image to the specified blobstore container"
+  [service image blobstore container {:keys [path] :as options}]
+  (apply (ns-resolve 'pallet.compute.vmfest.service 'publish-image)
+         service image blobstore container options))
+
+(defn has-image?
+  "Predicate to test for the presence of a specific image"
+  [service image-key]
+  ((ns-resolve 'pallet.compute.vmfest.service 'has-image?) service image-key))
+
 ;;;; Compute service SPI
 (defn supported-providers []
   ["vmfest"])
