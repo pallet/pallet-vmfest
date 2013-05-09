@@ -1,5 +1,43 @@
 # Release Notes
 
+## 0.3.0-alpha.4
+
+- Remove use of slingshot
+
+- Ignore stopped/inaccessible VMs
+
+  If a VM is misconfigured, or stopped, pallet cannot manage it. From now on
+  these VMs will be effectively ignored. For example, if you have a
+  `vm-test-0` VM that is stopped, and you converge to 1 the same group, you
+  will get another VM in this group. Converging back to 0 will remove this
+  new vm, leaving the stopped `vm-test-0` alone.
+
+  Similarly, all VMs created by pallet are in the `vmfest` group in
+  VirtualBox, and pallet will not _see_ any VM outside of this group. The
+  VMs outside the pallet group were already ignored, since they don't have
+  any group tag, but now they will not even be considered (e.g. not listed
+  in pallet.repl/show-nodes).
+
+- Allow dynamic selection of the method of comm w/vbox
+
+  The vmfest provider now can cake a new parameter `:vbox-comm` to select
+  the method of communication of Pallet with the VirtualBox subsystem. The
+  options are :xpcom for XPCOM, and :ws for Web Services. It defaults to
+  :xpcom.
+
+  There is no longer the need to add either vboxjxws or vboxjxpcom jars to
+  the classpath prior to using pallet-vmfest, in order to select the
+  communication method. Pallet-vmfest contains both jars and one of them
+  will be injected in the classpath dynamically depending on the value of
+  `:vbox-comm`.
+
+  NOTE: Selecting the communication methods with VirtualBox can only be done
+  once per JVM session.
+
+- Use lein instead of maven, deploy to clojars
+
+  The group-id is now com.palletops.
+
 ## 0.3.0-alpha.3
 
 - Update to vmfest 0.3.0-alpha.3
