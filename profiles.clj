@@ -5,8 +5,6 @@
         [ch.qos.logback/logback-classic "1.0.9"]]
        :plugins [[codox/codox.leiningen "0.6.4"]
                  [lein-marginalia "0.7.1"]]}
- :ws {:dependencies [[org.clojars.tbatchelli/vboxjws "4.2.4"]]}
- :xpcom {:dependencies [[org.clojars.tbatchelli/vboxjxpcom "4.2.4"]]}
  :no-checkouts {:checkout-shares ^:replace []} ; disable checkouts
  :doc {:dependencies [[com.palletops/pallet-codox "0.1.0"]]
        :codox {:writer codox-md.writer/write-docs
