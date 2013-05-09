@@ -1,12 +1,16 @@
 (ns pallet.compute.vmfest-test
-  (:use
-   clojure.test
-   pallet.compute.vmfest
-   [pallet.core :only [server-spec]]
-   [pallet.compute :only [nodes compute-service]]
-   [pallet.crate.automated-admin-user :only [automated-admin-user]]
-   [pallet.live-test :only [images test-for test-nodes]]
-   [useful.ns :only [alias-var]]))
+  (:require
+   [clojure.test :refer :all]
+   [pallet.compute.vmfest :refer :all]
+   [pallet.core :refer [server-spec]]
+   [pallet.compute :refer [nodes instantiate-provider]]
+   [pallet.crate.automated-admin-user :refer [automated-admin-user]]
+   [pallet.live-test :refer [images test-for test-nodes]]
+   [useful.ns :refer [alias-var]]))
+
+
+;;; Initialise the vbox communication
+(add-vbox-to-classpath (or (System/getProperty "vbox-comm") :xpcom))
 
 (try
   (use '[pallet.api :only [plan-fn]])
@@ -38,10 +42,13 @@
 (if-feature taggable-nodes
   (do
     (use '[pallet.node :only [tag tags tag taggable?]])
+    (require 'pallet.compute.vmfest.service)
     (defn test-tags [node]
       (when node
         (is (taggable? (:node node)))
-        (is (= "vmfest-test-host" (tag (:node node) group-name-tag))))))
+        (is (= "vmfest-test-host"
+               (tag (:node node)
+                    pallet.compute.vmfest.service/group-name-tag))))))
   (defn test-tags [_]))
 
 (deftest live-test
@@ -53,7 +60,7 @@
           :phases
           {:bootstrap (plan-fn (automated-admin-user))}
           :image image :count 1)}
-      (let [service (compute-service :vmfest)
+      (let [service (instantiate-provider :vmfest)
             node (first (:vmfest-test-host node-map))]
         (clojure.tools.logging/infof "node-types %s" node-types)
         (clojure.tools.logging/infof "node-map %s" node-map)

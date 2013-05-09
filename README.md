@@ -21,20 +21,18 @@ command line.
 [Documentation][docs] is available.
 
 
-## Installation for VirtualBox 4.2.x
+## Installation
 
 Pallet-vmfest is distributed as a jar, and is available in the
-[sonatype repository][sonatype].
+[clojars repository][sonatype].
 
 Installation is with maven or your favourite maven repository aware build tool.
 
 ### lein project.clj
 
 ``` clojure
-:dependencies [[org.cloudhoist/pallet "0.7.2"]
-               [org.cloudhoist/pallet-vmfest "0.3.0-alpha.3"]]
-:repositories {"sonatype"
-               "http://oss.sonatype.org/content/repositories/releases"}
+:dependencies [[com.palletops/pallet "0.8.0-beta.9"]
+               [com.palletops/pallet-vmfest "0.3.0-alpha.4"]]
 ```
 
 ### maven pom.xml
@@ -42,45 +40,58 @@ Installation is with maven or your favourite maven repository aware build tool.
 ``` xml
 <dependencies>
   <dependency>
-    <groupId>org.cloudhoist</groupId>
+    <groupId>com.palletops</groupId>
     <artifactId>pallet</artifactId>
-    <version>0.7.2</version>
+    <version>0.8.0-beta.9</version>
   </dependency>
   <dependency>
-    <groupId>org.cloudhoist</groupId>
+    <groupId>com.palletops</groupId>
     <artifactId>pallet-vmfest</artifactId>
-    <version>0.3.0-alpha.3</version>
+    <version>0.3.0-alpha.4</version>
   </dependency>
 <dependencies>
-
-<repositories>
-  <repository>
-    <id>sonatype</id>
-    <url>http://oss.sonatype.org/content/repositories/releases</url>
-  </repository>
-</repositories>
 ```
-
-### Installation for VirtualBox 4.1.x
-
-The version `0.2.1` of `pallet-vmfest` supports VirtualBox 4.1.x only.
 
 ## Usage
 
 ### Prerequisites
 
-Follow [these
-instructions](https://github.com/tbatchelli/vmfest#install-virtualbox-42x)
-to install and setup VirtualBox to work with VMFest (and Pallet).
+Install
+[VirtualBox 4.2.x (latest)](https://www.virtualbox.org/wiki/Downloads)
+if you don't have it installed already. It won't work with older
+versions of VirtualBox.
 
-### Defining the Compute Service
+There are two ways in which `pallet-vmfest` communicates with
+Virtualbox: __XPCOM__ and __Web Services__. XPCOM is faster and easier
+to setup, but does not work on Windows (by design) and on some of the
+latest versions of Linux distros. The Web Services method works
+universally but requires a little bit of setup and a small server
+running on your machine.
+
+For XPCOM, there are no more prerequisites.
+
+For Web Services you need to perform a one-time configuration of the
+Web Services server named `vboxwebsrvr`:
+ 
+```shell
+$ VBoxManage setproperty websrvauthlibrary null
+```
+
+and then you always need to have `vboxwebsrvr` running when using
+pallet-vmfest. This server can be started with:
+
+```shell
+$ vboxwebsrv -t0
+```
+
+### Defining the Compute Service to use with XPCOM
 
 At the REPL you can define the VMFest/VirtualBox compute service the following
 way:
 
 ``` clojure
 (use '[pallet.configure :only [compute-service]])
-(def vmfest (compute-service "vmfest" nil nil))
+(def vmfest (compute-service "vmfest"))
 ```
 
 For a more permanent solution, define the VMFest/VirtualBox service by
@@ -91,6 +102,22 @@ as shown here:
 (defpallet :services {:vmfest {:provider "vmfest"}})
 ``` 
 
+### Defining the Compute Service to use with Web Services
+
+At the REPL use this:
+
+```clojure
+(use '[pallet.configure :only [compute-service]])
+(def vmfest (compute-service "vmfest" :vbox-comm :ws))
+```
+
+And in `~/.pallet/config.clj` use:
+
+``` clojure
+(defpallet :services {:vmfest {:provider "vmfest"
+                               :vbox-comm :ws}})
+```
+
 ### Installing Images
 
 Prior to using VMFest with Pallet for the first time, we need to setup
@@ -99,7 +126,7 @@ at least one model image:
 ```clojure
 (use '[pallet.compute.vmfest :only [add-image]])
 (add-image vmfest
-  "https://s3.amazonaws.com/vmfest-images/debian-6.0.2.1-64bit-v0.3.vdi.gz")
+  "https://s3.amazonaws.com/vmfest-images/ubuntu-12.04.vdi.gz")
 ```
 
 You can verify that the image has been installed by running:
@@ -108,18 +135,18 @@ You can verify that the image has been installed by running:
 (pprint (images vmfest))
 ```
 
-The new image is named `:debian-6.0.2.1-64bit-v0.3`.
+The new image is named `:ubuntu-12.04`.
 
 ## Using VMFest From Within Pallet
 
-Since we just installed an image named `:debian-6.0.2.1-64bit-v0.3`,
+Since we just installed an image named `:ubuntu-12.04`,
 we can proceed to use it by either referencing it directly:
 
 ```clojure
 (use '[pallet.core :only [group-spec]])
-(def debian-group 
-    (group-spec "debian-vms" 
-         :node-spec {:image {:image-id :debian-6.0.2.1-64bit-v0.3}}))
+(def ubuntu-group 
+    (group-spec "ubuntu-vms" 
+         :node-spec {:image {:image-id :ubuntu-12.04}}))
 ```
 
 or by specifying an appropriate template, just as you would do with
@@ -127,9 +154,9 @@ any other cloud provider, e.g.:
 
 ```clojure
 (use '[pallet.core :only [group-spec]])
-(def debian-group 
-    (group-spec "debian-vms" 
-         :node-spec {:image {:image {:os-family :debian      
+(def ubuntu-group 
+    (group-spec "ubuntu-vms" 
+         :node-spec {:image {:image {:os-family :ubuntu      
                                      :os-64-bit? true }}}))
 ```
 
@@ -140,9 +167,9 @@ any other cloud provider, e.g.:
 Pallet-vmfest can work with 2 different network models
 
 - __:local__: this is the default if no further configuration is
-    specified. :local mode provides many advantages, but requires that
-    the image used enables two network interfaces. In exchange, :local
-    mode is more convenient in general than :bridged mode that we will
+    specified. `:local` mode provides many advantages, but requires that
+    the image used enables two network interfaces. In exchange, `:local`
+    mode is more convenient in general than `:bridged` mode that we will
     discuss later:
     
     - VMs do not interact with external DHCP servers. This is relevant
@@ -171,9 +198,7 @@ Pallet-vmfest can work with 2 different network models
     
     `:default-local-interface` determines what local-only network will
     be used (by default named `vboxnet0`, but you can use any as long
-    as the naming complies with `vboxnetN`. 
-
-   
+    as the naming complies with `vboxnetN`.    
 
 - __:bridged__: In this mode, each VM will use one of the host's
     network interface directly to aquire a valid IP address in
@@ -224,15 +249,6 @@ Pallet-vmfest can work with 2 different network models
     is how VirtualBox sees it.
 
 
-
-### Custom Hardware Models
-
-TODO
-
-### Custom Images
-
-TODO
-
 ## License
 
 Licensed under [EPL](http://www.eclipse.org/legal/epl-v10.html)
@@ -251,7 +267,7 @@ Copyright 2010, 2011, 2012, 2013  Hugo Duncan and Antoni Batchelli
 [screencast]: http://www.youtube.com/hugoduncan#p/u/1/adzMkR0d0Uk "Pallet Screencast"
 [clojure]: http://clojure.org "Clojure"
 [cljstart]: http://dev.clojure.org/display/doc/Getting+Started "Getting started with clojure"
-[sonatype]: http://oss.sonatype.org/content/repositories/releases/org/cloudhoist "Sonatype Maven Repository"
+[sonatype]: http://clojars.org/repo/com/palletops/ "Clojars Repository"
 
 [vmfest]: https://github.com/tbatchelli/vmfest "vmfest"
 [virtualbox]: http://virtualbox.org/ "VirtualBox"
