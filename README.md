@@ -32,7 +32,7 @@ Installation is with maven or your favourite maven repository aware build tool.
 
 ``` clojure
 :dependencies [[com.palletops/pallet "0.8.0-beta.9"]
-               [com.palletops/pallet-vmfest "0.3.0-alpha.3"]]
+               [com.palletops/pallet-vmfest "0.3.0-alpha.4"]]
 ```
 
 ### maven pom.xml
@@ -47,7 +47,7 @@ Installation is with maven or your favourite maven repository aware build tool.
   <dependency>
     <groupId>com.palletops</groupId>
     <artifactId>pallet-vmfest</artifactId>
-    <version>0.3.0-alpha.3</version>
+    <version>0.3.0-alpha.4</version>
   </dependency>
 <dependencies>
 ```
