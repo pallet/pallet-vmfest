@@ -150,13 +150,6 @@
    [clojure.string :only [lower-case]]
    [vmfest.virtualbox.version :only [vbox-binding]]))
 
-;; slingshot version compatibility
-(try
-  (use '[slingshot.slingshot :only [throw+ try+]])
-  (catch Exception _
-    (use '[slingshot.core :only [throw+ try+]])))
-
-
 (defn add-image
   "Add an image to the images available. The image will be installed from the
    specified `url-string`."
@@ -213,46 +206,56 @@
   nothing, and if the wrong library is already in the classpath, it'll
   thrown an exception."
   [comm]
-  (condp = (vbox-binding)
-    :xpcom (if (= comm :ws)
-             (let [error-msg
-                   (str "This VMFest provider is already configured to use XPCOM but "
-                        "you are attempting to configure it to use Web Services. Only "
-                        "one communication can be used at any time, and it can only "
-                        "be set once per JVM run.")]
-               (logging/error error-msg)
-               (throw+
+  (case (vbox-binding)
+    :xpcom
+    (if (= comm :ws)
+      (let [error-msg
+            (str "This VMFest provider is already configured to use XPCOM but "
+                 "you are attempting to configure it to use Web Services. Only "
+                 "one communication can be used at any time, and it can only "
+                 "be set once per JVM run.")]
+        (logging/error error-msg)
+        (throw (ex-info
+                error-msg
                 {:type :vmfest-configuration-error
-                 :message error-msg}))
-             (logging/infof "This VMFest provider is already configured to use XPCOM."))
-    :ws (if (= comm :xpcom)
-          (let [error-msg
-                (str "This VMFest provider is already configured to use Web Services but "
-                     "you are attempting to configure it to use XPCOM. Only "
-                     "one communication can be used at any time, and it can only "
-                     "be set once per JVM run.")]
-            (logging/error error-msg)
-            (throw+
-             {:type :vmfest-configuration-error
-              :message error-msg}))
-          (logging/infof "This VMFest provider is already configured to use Web Services.")) 
-    :error (do
-             (logging/infof "Connecting to VirtualBox via %s"
-                            (if (= :ws comm) "Web Services" "XPCom"))
-             (let [jar-path (if (= :ws comm)
-                              "vboxjws-4.12.jar"
-                              "vboxjxpcom-4.12.jar")
-                   ;; The classloaders that come with the JVM cannot
-                   ;; load a jar from within a jar. Instead, we'll
-                   ;; copy the vboxj* jar from the pallet-vmfest jar
-                   ;; into a temp location, and then add such location
-                   ;; to the classloader. java, the things you make me
-                   ;; do!
-                   file-path (extract-jar jar-path)
-                   ;; the classloader where to load this jar
-                   cl  (or (.getClassLoader clojure.lang.RT)
-                           (.getContextClassLoader (Thread/currentThread)))]
-               (dp/add-classpath-url cl file-path)))))
+                 :message error-msg})))
+      (logging/infof
+       "This VMFest provider is already configured to use XPCOM."))
+
+    :ws
+    (if (= comm :xpcom)
+      (let [error-msg
+            (str
+             "This VMFest provider is already configured to use Web Services "
+             "but you are attempting to configure it to use XPCOM. Only "
+             "one communication can be used at any time, and it can only "
+             "be set once per JVM run.")]
+        (logging/error error-msg)
+        (throw (ex-info
+                error-msg
+                {:type :vmfest-configuration-error
+                 :message error-msg})))
+      (logging/infof
+       "This VMFest provider is already configured to use Web Services."))
+
+    :error
+    (do
+      (logging/infof "Connecting to VirtualBox via %s"
+                     (if (= :ws comm) "Web Services" "XPCom"))
+      (let [jar-path (if (= :ws comm)
+                       "vboxjws-4.12.jar"
+                       "vboxjxpcom-4.12.jar")
+            ;; The classloaders that come with the JVM cannot
+            ;; load a jar from within a jar. Instead, we'll
+            ;; copy the vboxj* jar from the pallet-vmfest jar
+            ;; into a temp location, and then add such location
+            ;; to the classloader. java, the things you make me
+            ;; do!
+            file-path (extract-jar jar-path)
+            ;; the classloader where to load this jar
+            cl  (or (.getClassLoader clojure.lang.RT)
+                    (.getContextClassLoader (Thread/currentThread)))]
+        (dp/add-classpath-url cl file-path)))))
 
 ;; A NOTE about this implementation
 ;;

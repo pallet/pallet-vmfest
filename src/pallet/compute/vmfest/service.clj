@@ -43,12 +43,6 @@ classpath before vmfest itself is loaded"
   (:use
    [clojure.string :only [lower-case]]))
 
-;; slingshot version compatibility
-(try
-  (use '[slingshot.slingshot :only [throw+ try+]])
-  (catch Exception _
-    (use '[slingshot.core :only [throw+ try+]])))
-
 ;; feature predicates
 (defmacro ^{:private true} get-has-feature
   []
@@ -153,7 +147,7 @@ Accessible means that VirtualBox itself can access the machine. In
   pallet.node/Node
   (ssh-port [_] 22)
   (primary-ip [_]
-    (try+
+    (try
       (manager/get-ip node)
       (catch Exception _
         ;; fallback to the ip stored in the node's extra parameters
@@ -441,9 +435,9 @@ Accessible means that VirtualBox itself can access the machine. In
       (when (and (not (wait-for-all-ips machine connected-slots))
                  (:destroy-on-ip-fail node-spec true))
         (manager/destroy machine)
-        (throw+
-         {:type :no-ip-available
-          :message "Could not determine IP address of new node"})))
+        (throw (ex-info
+                "Could not determine IP address of new node"
+                {:type :no-ip-available}))))
     ;; wait for services to come up, specially SSH
     ;; todo: provide some form of exponential backoff try with at
     ;; something like 3 attempts. A single wait for 4s might not
@@ -468,10 +462,10 @@ Accessible means that VirtualBox itself can access the machine. In
                 (when-not (zero? exit)
                   (when (:destroy-on-bootstrap-fail node-spec true)
                     (manager/destroy machine))
-                  (throw+
-                   {:message (format "Bootstrap failed: %s" out)
-                    :type :pallet/bootstrap-failure
-                    :group-spec node-spec})))))))
+                  (throw (ex-info
+                          (format "Bootstrap failed: %s" out)
+                          {:type :pallet/bootstrap-failure
+                           :group-spec node-spec}))))))))
       node)))
 
 (defn- always-match
@@ -899,11 +893,11 @@ Accessible means that VirtualBox itself can access the machine. In
                  "Could not find image %s. Known images are %s."
                  image-kw (keys @images))]
         (logging/error msg)
-        (throw+
-         {:type :pallet/unkown-image
-          :image image-kw
-          :known-images (keys @images)
-          :message msg}))))
+        (throw (ex-info
+                msg
+                {:type :pallet/unkown-image
+                 :image image-kw
+                 :known-images (keys @images)})))))
   (has-image? [_ image-kw]
     ((or @images {}) image-kw))
   (find-images [_ template]
