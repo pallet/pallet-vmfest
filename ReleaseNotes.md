@@ -1,5 +1,11 @@
 # Release Notes
 
+## 0.3.0-alpha.5
+
+- Update vmfest to 0.3.0-alpha.5.
+
+- Fix issue with forwards from p.c.vmfest to p.c.v.service.
+
 ## 0.3.0-alpha.4
 
 - Remove use of slingshot
