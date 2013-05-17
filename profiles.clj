@@ -1,7 +1,7 @@
 {:dev {:dependencies
        [[org.clojure/clojure "1.4.0"]
-        [com.palletops/pallet "0.8.0-beta.9"]
-        [com.palletops/pallet "0.8.0-beta.9" :classifier "tests"]
+        [com.palletops/pallet "0.8.0-beta.10"]
+        [com.palletops/pallet "0.8.0-beta.10" :classifier "tests"]
         [ch.qos.logback/logback-classic "1.0.9"]]
        :plugins [[codox/codox.leiningen "0.6.4"]
                  [lein-marginalia "0.7.1"]]}

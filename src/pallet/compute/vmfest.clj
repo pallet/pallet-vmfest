@@ -165,14 +165,14 @@
 (defn install-image
   "Install the image from the specified `url`"
   [service url {:as options}]
-  (apply (ns-resolve 'pallet.compute.vmfest.service 'install-image)
-         service url options))
+  ((ns-resolve 'pallet.compute.vmfest.service 'install-image)
+   service url options))
 
 (defn publish-image
   "Publish the image to the specified blobstore container"
   [service image blobstore container {:keys [path] :as options}]
-  (apply (ns-resolve 'pallet.compute.vmfest.service 'publish-image)
-         service image blobstore container options))
+  ((ns-resolve 'pallet.compute.vmfest.service 'publish-image)
+   service image blobstore container options))
 
 (defn has-image?
   "Predicate to test for the presence of a specific image"
@@ -194,8 +194,6 @@
     (.deleteOnExit f)
     (with-open [is (.getContent jar-url)] (copy is f))
     (.toURL f)))
-
-
 
 (defn add-vbox-to-classpath
   "If there is no vboxj*.jar library in the current classpath, it will
