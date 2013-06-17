@@ -780,9 +780,20 @@ Accessible means that VirtualBox itself can access the machine. In
                                     [:algorithms :vmfest :create-nodes-fn]
                                     parallel-create-nodes)
             image-map (image @images)
-            network-type (or (:network-type (image @images)) network-type)
-            nat-rules (:nat-rules (image @images))
-            image=hardware-overrides ()
+            ;; select the network config, giving preference to the
+            ;; node-spec first, then image meta, and finally the
+            ;; provider config.
+            network-type (or (:network-type template)
+                             (:network-type image-map)
+                             network-type)
+            bridged-interface (or (:bridged-interface template)
+                                  (:bridged-interface image-map)
+                                  bridged-interface)
+            local-interface (or (:local-interface template)
+                                (:local-interface image-map)
+                                local-interface)
+            nat-rules (or (:nat-rules template)
+                          (:nat-rules image-map))
             final-hardware-model (selected-hardware-model
                                   template
                                   models
@@ -792,6 +803,9 @@ Accessible means that VirtualBox itself can access the machine. In
                                   nat-rules
                                   local-interface
                                   bridged-interface)]
+        (logging/debug
+         "Final network config: type %s bridged-if %s local-if %s nat-rules"
+         network-type bridged-interface local-interface nat-rules)
         (logging/debug (str "current-machine-names " current-machine-names))
         (logging/debug (str "target-machine-names " target-machine-names))
         (logging/debug (str "target-machines-already-existing "
