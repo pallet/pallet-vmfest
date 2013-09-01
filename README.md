@@ -53,7 +53,7 @@ If you use maven, add the following to your pom.xml file:
 
 #### OSX
 
-pallet-vmfest can use XPCOM to communicate with VirtualBox on OSX.  (If your Linux distro supports XPCOM then this method will also work for you)
+```pallet-vmfest``` can use XPCOM to transparently communicate with VirtualBox on OSX.  (If your Linux distro supports XPCOM then this method will also work for you)
 
 1. Open a clojure repl:
   ```bash 
@@ -80,7 +80,7 @@ pallet-vmfest can use XPCOM to communicate with VirtualBox on OSX.  (If your Lin
 
 #### Windows, Linux
 
-pallet-vmfest can always use web services to speak with VirtualBox no matter the operating system.
+```pallet-vmfest``` can always use web services to speak with VirtualBox, no matter the operating system.
 
 1. Turn off auth (only needs to be done once)
   ```bash
@@ -135,7 +135,7 @@ You can use your own virtualbox image or one of our pre-made ones, available her
 
 #### Option B - Use existing virtualbox image:
 
-  0. (Optional) Download image
+  0. Download image or use one of your own
 
     for example,
     ```bash 
@@ -238,13 +238,16 @@ Now that the model has been installed, we can use it when defining our pallet gr
   (use 'pallet.compute)
   (pallet.compute/nodes vmfest)
   ```
-  ex. => (ubuntu-vms-0  ubuntu-vms  public: 192.168.56.101)
+  ```
+  => (ubuntu-vms-0  ubuntu-vms  public: 192.168.56.101)
+  ```
 
   4. SSH into box (using credentials from .meta file)
   ```bash
   $ ssh vmfest@192.168.56.101
+  ```
 
-  5. Optional. Shut down instance
+  5. When you are ready, shut down the instance
 
   ```clojure
   (use '[pallet.api :only [converge]])
