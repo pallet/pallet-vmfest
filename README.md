@@ -2,7 +2,7 @@
 
 ```pallet-vmfest``` lets you use [Pallet][palletops] to manage [virtualbox][virtualbox] vm's just like you would any other cloud provider.  You can test your configuration and crates locally and, behind-the-scenes, the [vmfest][vmfest] library handles driving VirtualBox for you.
 
-You can learn more about how to use [Pallet][palletops] from their online [documentation][docs].
+You can learn more about how to use Pallet from the online [documentation][docs].
 
 
 ## Prerequisites
@@ -65,8 +65,8 @@ If you use maven, add the following to your pom.xml file:
 2. Configure pallet to use the "vmfest" cloud provider
 
   ``` clojure
-  (use '[pallet.compute])
-  (def vmfest (pallet.compute/instantiate-provider "vmfest"))
+  (require '[pallet.compute :refer [instantiate-provider]])
+  (def vmfest (instantiate-provider "vmfest"))
   
   ```
 
@@ -101,16 +101,16 @@ If you use maven, add the following to your pom.xml file:
 
 4. Configure pallet to use the "vmfest" cloud provider
   ```clojure
-  (use '[pallet.compute])
-  (def vmfest (pallet.compute/instantiate-provider "vmfest" 
-                                                   :vbox-comm :ws))
+  (require '[pallet.compute :refer [instantiate-provider]])
+  (def vmfest (instantiate-provider "vmfest" 
+                                      :vbox-comm :ws))
   ```
 
   or, add this to your `~/.pallet/config.clj` file:
 
   ``` clojure
   (defpallet :services {:vmfest {:provider "vmfest"
-                                 :vbox-comm :ws}})
+                                   :vbox-comm :ws}})
   ```
 
 
@@ -128,9 +128,9 @@ You can use your own virtualbox image or one of our pre-made ones, available her
   1. From a repl,
 
   ```clojure
-  (use '[pallet.compute.vmfest :only [add-image]])
+  (require '[pallet.compute.vmfest :refer [add-image]])
   (add-image vmfest
-    "https://s3.amazonaws.com/vmfest-images/ubuntu-13.04-64bit.vdi.gz")
+               "https://s3.amazonaws.com/vmfest-images/ubuntu-13.04-64bit.vdi.gz")
   ```
 
 #### Option B - Use existing virtualbox image:
@@ -162,9 +162,9 @@ You can use your own virtualbox image or one of our pre-made ones, available her
 
   3. Install the model from a repl:
   ```clojure
-  (use '[pallet.compute.vmfest :only [add-image]])
+  (require '[pallet.compute.vmfest :refer [add-image]])
   (add-image vmfest
-    "/Users/alanning/tmp/vmfest/ubuntu-13.04-64bit.vdi.gz")
+               "/Users/alanning/tmp/vmfest/ubuntu-13.04-64bit.vdi.gz")
   ```
 
   ```Note:``` File path must be absolute. 
@@ -177,8 +177,8 @@ You can use your own virtualbox image or one of our pre-made ones, available her
   1. From a repl, 
 
   ```clojure
-  (use '[pallet.compute :only [images]]
-       '[clojure.pprint])
+  (require '[pallet.compute :refer [images]]
+             '[clojure.pprint :refer [pprint]])
   (pprint (images vmfest))
   ```
 
@@ -209,34 +209,34 @@ Now that the model has been installed, we can use it when defining our pallet gr
   You can reference models directly...
 
   ```clojure
-  (use '[pallet.api :only [group-spec]])
+  (require '[pallet.api :refer [group-spec]])
   (def ubuntu-group 
       (group-spec "ubuntu-vms" 
-           :node-spec {:image {:image-id :ubuntu-13.04}}))
+                  :node-spec {:image {:image-id :ubuntu-13.04}}))
   ```
 
   or just specify an appropriate template (just like with any other cloud provider) ...
 
   ```clojure
-  (use '[pallet.api :only [group-spec]])
+  (require '[pallet.api :refer [group-spec]])
   (def ubuntu-group 
       (group-spec "ubuntu-vms" 
-           :node-spec {:image {:image {:os-family :ubuntu      
-                                       :os-64-bit? true }}}))
+                  :node-spec {:image {:image {:os-family :ubuntu      
+                                              :os-64-bit? true }}}))
   ```
 
   2. Spin up an instance
 
   ```clojure
-  (use '[pallet.api :only [converge]])
+  (require '[pallet.api :refer [converge]])
   (pallet.api/converge {ubuntu-group 1}
-                        :compute vmfest)
+                         :compute vmfest)
   ```
 
   3. Get ip address
   ```clojure
-  (use 'pallet.compute)
-  (pallet.compute/nodes vmfest)
+  (require '[pallet.compute :refer [nodes]])
+  (nodes vmfest)
   ```
   ```
   => (ubuntu-vms-0  ubuntu-vms  public: 192.168.56.101)
@@ -250,9 +250,9 @@ Now that the model has been installed, we can use it when defining our pallet gr
   5. When you are ready, shut down the instance
 
   ```clojure
-  (use '[pallet.api :only [converge]])
-  (pallet.api/converge {ubuntu-group 0}
-                        :compute vmfest)
+  (require '[pallet.api :refer [converge]])
+  (converge {ubuntu-group 0}
+              :compute vmfest)
   ```
 
 
@@ -350,7 +350,7 @@ Now that the model has been installed, we can use it when defining our pallet gr
 
 ## Troubleshooting
 
-### instantiate-provider fails
+### ```instantiate-provider``` fails
 
 If the call to ```pallet.compute/instantiate-provider``` fails, it probably means you haven't installed the model using ```add-image```.  One way this could occur is if you just place the draft .meta file template provided by vmfest into your ```~/.vmfest/models``` directory.  The draft .meta file is incomplete; the ```add-image``` function will flesh it out for you and place it in the proper location.
 
@@ -395,4 +395,5 @@ Copyright 2010, 2011, 2012, 2013  Hugo Duncan and Antoni Batchelli
 [vmfest]: https://github.com/tbatchelli/vmfest "vmfest"
 [virtualbox]: http://virtualbox.org/ "VirtualBox"
 [leiningen]: http://github.com/technomancy/leiningen "Leiningen"
+
 
