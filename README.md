@@ -348,6 +348,28 @@ Now that the model has been installed, we can use it when defining our pallet gr
     is how VirtualBox sees it.
 
 
+## Troubleshooting
+
+### instantiate-provider fails
+
+If the call to ```pallet.compute/instantiate-provider``` fails, it probably means you haven't installed the model using ```add-image```.  One way this could occur is if you just place the draft .meta file template provided by vmfest into your ```~/.vmfest/models``` directory.  The draft .meta file is incomplete; the ```add-image``` function will flesh it out for you and place it in the proper location.
+
+### Obtaining a stack trace
+
+In a clojure REPL, ```*e``` contains the last exception.  So to see a stack trace you can either:
+
+  a. Use the underlying Java function:
+  ```clojure
+  (.printStackTrace *e)
+  ```
+
+  b. Use Clojure's stack trace api:
+  ```clojure
+  (use 'clojure.stacktrace)
+  (print-stack-trace *e)
+  ```
+
+
 ## License
 
 Licensed under [EPL](http://www.eclipse.org/legal/epl-v10.html)
@@ -373,3 +395,4 @@ Copyright 2010, 2011, 2012, 2013  Hugo Duncan and Antoni Batchelli
 [vmfest]: https://github.com/tbatchelli/vmfest "vmfest"
 [virtualbox]: http://virtualbox.org/ "VirtualBox"
 [leiningen]: http://github.com/technomancy/leiningen "Leiningen"
+
