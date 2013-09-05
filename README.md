@@ -188,7 +188,7 @@ You can use your own virtualbox image or one of our pre-made ones, available her
 
 ### Step 5. Spin up an instance
 
-Now that the model has been installed, we can use it when defining our pallet group-spec (a configuration definition used by pallet when starting instances).
+Now that the model has been installed, we can use it when defining our pallet [group-spec][group-spec] (a configuration definition used by pallet when starting instances).
 
   1. Define a group-spec
 
@@ -390,6 +390,7 @@ Copyright 2010, 2011, 2012, 2013  Hugo Duncan and Antoni Batchelli
 [vmfest]: https://github.com/tbatchelli/vmfest "vmfest"
 [virtualbox]: http://virtualbox.org/ "VirtualBox"
 [leiningen]: http://github.com/technomancy/leiningen "Leiningen"
+[group-spec]: http://palletops.com/doc/reference/0.8/node-types/ "group-spec documentation"
 [example-deploy-webapp]: https://github.com/pallet/example-deploy-webapp "deploying a webapp"
 [pallet-github]: https://github.com/pallet "Pallet github"
 [pallet-reference-docs]: http://palletops.com/doc/reference-0.8/ "Pallet reference docs"
