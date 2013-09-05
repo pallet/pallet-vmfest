@@ -135,41 +135,27 @@ You can use your own virtualbox image or one of our pre-made ones, available her
 
 #### Option B - Use existing virtualbox image:
 
-  0. Download image or use one of your own
+  Using your own virtualbox image can be a bit complex to set up due to specifics of Guest Additions and network interface configuration so this guide assumes you are using one of the vmfest images we provide.  You can see the core [vmfest][vmfest] project for more info on creating your own image.
+
+  1. Download one of our existing vmfest images and its meta file
 
     for example,
     ```bash 
     $ cd ~/Downloads
+    $ wget https://s3.amazonaws.com/vmfest-images/ubuntu-13.04-64bit.meta
     $ wget https://s3.amazonaws.com/vmfest-images/ubuntu-13.04-64bit.vdi.gz
     ```
 
-  1. Create a draft meta-data file for the image, using this as a template: https://s3.amazonaws.com/vmfest-images/ubuntu-13.04-64bit.meta
-
-    for example,
-    ```bash 
-    $ vim ~/ubuntu-13.04-64bit.meta
-    ```
-
-  2. Move the virtualbox image and the draft meta-data file together into the same directory.
-
-    for example,
-    ```bash
-    $ mkdir -p ~/tmp/vmfest; 
-    $ cd ~/tmp/vmfest
-    $ mv ~/ubuntu-13.04-64bit.meta .
-    $ mv ~/Downloads/ubuntu-13.04-64bit.vdi.gz .
-    ```
-
-  3. Install the model from a repl:
+  2. Install the model from a repl:
   ```clojure
   (require '[pallet.compute.vmfest :refer [add-image]])
   (add-image vmfest
-               "/Users/alanning/tmp/vmfest/ubuntu-13.04-64bit.vdi.gz")
+               "/Users/alanning/Downloads/ubuntu-13.04-64bit.vdi.gz")
   ```
 
   ```Note:``` File path must be absolute. 
 
-  ```Note:``` ~/.vmfest/models will contain the installed model (image + meta-data file).  You can remove the original image file if you like.
+  ```Note:``` ~/.vmfest/models will contain the installed model (image + meta-data file).  You can remove the original files if you like.
     
 
 ### Step 4. Verify image has been installed
