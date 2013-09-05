@@ -245,6 +245,15 @@ Now that the model has been installed, we can use it when defining our pallet gr
   Done!
 
 
+## Next Steps
+
+Where to go from here:
+
+ * An example of [deploying a webapp][example-deploy-webapp] using Pallet
+ * The [Pallet github][pallet-github] site for a list of pre-made crates
+ * The [Pallet reference docs][pallet-reference-docs] for more details on Pallet concepts
+
+
 ## Further configuration
 
 ### Networking modes
@@ -381,5 +390,6 @@ Copyright 2010, 2011, 2012, 2013  Hugo Duncan and Antoni Batchelli
 [vmfest]: https://github.com/tbatchelli/vmfest "vmfest"
 [virtualbox]: http://virtualbox.org/ "VirtualBox"
 [leiningen]: http://github.com/technomancy/leiningen "Leiningen"
-
-
+[example-deploy-webapp]: https://github.com/pallet/example-deploy-webapp "deploying a webapp"
+[pallet-github]: https://github.com/pallet "Pallet github"
+[pallet-reference-docs]: http://palletops.com/doc/reference-0.8/ "Pallet reference docs"
