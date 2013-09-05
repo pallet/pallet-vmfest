@@ -64,17 +64,25 @@ If you use maven, add the following to your pom.xml file:
 
 2. Configure pallet to use the "vmfest" cloud provider
 
-  ``` clojure
+  ```clojure
   (require '[pallet.compute :refer [instantiate-provider]])
   (def vmfest (instantiate-provider "vmfest"))
   
   ```
 
-  or, add this to your `~/.pallet/config.clj` file:
+  In this case there is no real config data.  But for other cloud providers, 
+  you may not want your credentials to live inside your codebase.  To avoid 
+  this you can add them to your `~/.pallet/config.clj` file:
 
   ``` clojure
   (defpallet :services {:vmfest {:provider "vmfest"}})
   ``` 
+  
+  and then use this method instead:
+  ```clojure
+  (require '[pallet.configure :refer [compute-service]])
+  (def vmfest (compute-service :vmfest))
+  ```
 
 
 
@@ -106,12 +114,21 @@ If you use maven, add the following to your pom.xml file:
                                       :vbox-comm :ws))
   ```
 
-  or, add this to your `~/.pallet/config.clj` file:
+  In this case there is no real config data.  But for other cloud providers, 
+  you may not want your credentials to live inside your codebase.  To avoid 
+  this you can add them to your `~/.pallet/config.clj` file:
 
   ``` clojure
   (defpallet :services {:vmfest {:provider "vmfest"
                                    :vbox-comm :ws}})
   ```
+  
+  and then use this method instead:
+  ```clojure
+  (require '[pallet.configure :refer [compute-service]])
+  (def vmfest (compute-service :vmfest))
+  ```
+  
 
 
 ### Step 3. Install a vmfest model
