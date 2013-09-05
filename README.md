@@ -121,9 +121,9 @@ The vmfest model consists of two parts:
   1. a virtualbox disk image (typically with a *.vdi extension) 
   2. a meta-data file with information about the image (*.meta extension)
 
-You can use your own virtualbox image or one of our pre-made ones, available here: https://s3.amazonaws.com/vmfest-images/
+Pre-made virtualbox images are available here: https://s3.amazonaws.com/vmfest-images/
 
-#### Option A - Let pallet-vmfest download an image for you:
+#### Option A - Let pallet-vmfest download an image for you
 
   1. From a repl,
 
@@ -133,11 +133,11 @@ You can use your own virtualbox image or one of our pre-made ones, available her
                "https://s3.amazonaws.com/vmfest-images/ubuntu-13.04-64bit.vdi.gz")
   ```
 
-#### Option B - Use existing virtualbox image:
+#### Option B - Download a vmfest virtualbox image yourself
 
-  Using your own virtualbox image can be a bit complex to set up due to specifics of Guest Additions and network interface configuration so this guide assumes you are using one of the vmfest images we provide.  You can see the core [vmfest][vmfest] project for more info on creating your own image.
+  Configuring a virtualbox image to work with vmfest can be a bit complex due to the specifics of Guest Additions and network interface configuration so this guide assumes you are using one of the vmfest images we provide.  You can explore the core [vmfest][vmfest] project for more info on creating your own image.
 
-  1. Download one of our existing vmfest images and its meta file
+  1. Download one of our existing vmfest images + draft meta file
 
     for example,
     ```bash 
