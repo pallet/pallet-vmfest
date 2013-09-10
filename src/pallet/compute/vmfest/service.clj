@@ -797,8 +797,10 @@ Accessible means that VirtualBox itself can access the machine. In
             final-hardware-model (selected-hardware-model
                                   template
                                   models
-                                  (select-keys
-                                   image-map [:storage :boot-mount-point])
+                                  (merge
+                                   (select-keys
+                                    image-map [:storage :boot-mount-point])
+                                   (:hardware image-map))
                                   network-type
                                   nat-rules
                                   local-interface
