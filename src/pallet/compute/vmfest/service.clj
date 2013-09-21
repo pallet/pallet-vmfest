@@ -979,6 +979,7 @@ Accessible means that VirtualBox itself can access the machine. In
 (def base-model
   {:memory-size 512
    :cpu-count 1
+   :io-apic-enabled? true
    :storage [{:name "IDE Controller"
               :bus :ide
               :devices [nil nil nil nil]}]
