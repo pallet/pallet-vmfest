@@ -150,12 +150,15 @@
    [clojure.string :only [lower-case]]
    [vmfest.virtualbox.version :only [vbox-binding]]))
 
+(defn flatten-map [m]
+  (mapcat identity m))
+
 (defn add-image
   "Add an image to the images available. The image will be installed from the
    specified `url-string`."
   [compute url-string & {:as options}]
   (let [the-fn (ns-resolve 'pallet.compute.vmfest.service 'add-image)]
-    (apply the-fn compute url-string options)))
+    (apply the-fn compute url-string (flatten-map options))))
 
 (defn find-images
   "Determine the best match image for a given image template"
@@ -164,9 +167,9 @@
 
 (defn install-image
   "Install the image from the specified `url`"
-  [service url {:as options}]
+  [service url & {:as options}]
   ((ns-resolve 'pallet.compute.vmfest.service 'install-image)
-   service url options))
+   service url (flatten-map options)))
 
 (defn publish-image
   "Publish the image to the specified blobstore container"

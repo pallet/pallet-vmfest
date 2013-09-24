@@ -15,6 +15,6 @@
    The file should be a clojure script that will be executed. *vmfest* is
    bound to the vmfest compute service"
   [request filename]
-  (binding [*vmfest* (compute/compute-service :virtualbox)
+  (binding [*vmfest* (compute/instantiate-provider :virtualbox)
             *ns* (the-ns 'pallet.task.vmfest-script)]
     (load-file (name filename))))

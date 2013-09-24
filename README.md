@@ -1,41 +1,38 @@
 # pallet-vmfest
 
-A provider for [Pallet][palletops], to use [vmfest][vmfest] to access
-[virtualbox][virtualbox].
+```pallet-vmfest``` lets you use [Pallet][palletops] to manage [virtualbox][virtualbox] vm's just like you would any other cloud provider.  You can test your configuration and crates locally and, behind-the-scenes, the [vmfest][vmfest] library handles driving VirtualBox for you.
 
-## Pallet
-
-[Pallet][palletops] is used to provision and maintain servers on cloud and
-virtual machine infrastructure, and aims to solve the problem of providing a
-consistently configured running image across a range of clouds.  It is designed
-for use from the [Clojure][clojure] REPL, from clojure code, and from the
-command line.
-
-- reuse configuration in development, testing and production.
-- store all your configuration in a source code management system (eg. git),
-  including role assignments.
-- configuration is re-used by compostion; just create new functions that call
-  existing crates with new arguments. No copy and modify required.
-- enable use of configuration crates (recipes) from versioned jar files.
-
-[Documentation][docs] is available.
+You can learn more about how to use Pallet from the online [documentation][docs].
 
 
-## Installation
+## Prerequisites
 
-Pallet-vmfest is distributed as a jar, and is available in the
+1. A Pallet clojure project
+
+  The simplest way to create one is to install [leiningen][leiningen] and then run the following command:
+  ```bash 
+  $ lein new pallet quickstart
+  ```
+
+2. [VirtualBox 4.2.x](https://www.virtualbox.org/wiki/Downloads)
+ (latest). It won't work with older versions of VirtualBox.
+
+
+## Usage
+
+### Step 1. Update classpath
+
+```pallet-vmfest``` is distributed as a jar, and is available in the
 [clojars repository][sonatype].
 
-Installation is with maven or your favourite maven repository aware build tool.
-
-### lein project.clj
+If you use leiningen, add the following dependencies to your project.clj file (pallet will already be there if you used the leiningen pallet template):
 
 ``` clojure
 :dependencies [[com.palletops/pallet "0.8.0-beta.9"]
-               [com.palletops/pallet-vmfest "0.3.0-alpha.5"]]
+               [com.palletops/pallet-vmfest "0.3.0-alpha.6"]]
 ```
 
-### maven pom.xml
+If you use maven, add the following to your pom.xml file:
 
 ``` xml
 <dependencies>
@@ -47,124 +44,238 @@ Installation is with maven or your favourite maven repository aware build tool.
   <dependency>
     <groupId>com.palletops</groupId>
     <artifactId>pallet-vmfest</artifactId>
-    <version>0.3.0-alpha.5</version>
+    <version>0.3.0-alpha.6</version>
   </dependency>
 <dependencies>
 ```
 
-## Usage
+### Step 2. Setup communication with VirtualBox
 
-### Prerequisites
+#### OSX
 
-Install
-[VirtualBox 4.2.x (latest)](https://www.virtualbox.org/wiki/Downloads)
-if you don't have it installed already. It won't work with older
-versions of VirtualBox.
+```pallet-vmfest``` can use XPCOM to transparently communicate with VirtualBox on OSX.  (If your Linux distro supports XPCOM then this method will also work for you)
 
-There are two ways in which `pallet-vmfest` communicates with
-Virtualbox: __XPCOM__ and __Web Services__. XPCOM is faster and easier
-to setup, but does not work on Windows (by design) and on some of the
-latest versions of Linux distros. The Web Services method works
-universally but requires a little bit of setup and a small server
-running on your machine.
+1. Open a clojure repl:
+  ```bash 
+  $ cd quickstart
+  $ lein deps
+  $ lein repl
+  ```
 
-For XPCOM, there are no more prerequisites.
+2. Configure pallet to use the "vmfest" cloud provider
 
-For Web Services you need to perform a one-time configuration of the
-Web Services server named `vboxwebsrvr`:
- 
-```shell
-$ VBoxManage setproperty websrvauthlibrary null
-```
+  ```clojure
+  (require '[pallet.compute :refer [instantiate-provider]])
+  (def vmfest (instantiate-provider "vmfest"))
+  
+  ```
 
-and then you always need to have `vboxwebsrvr` running when using
-pallet-vmfest. This server can be started with:
+  In this case there is no real config data.  But for other cloud providers, 
+  you may not want your credentials to live inside your codebase.  To avoid 
+  this you can add them to your `~/.pallet/config.clj` file:
 
-```shell
-$ vboxwebsrv -t0
-```
+  ``` clojure
+  (defpallet :services {:vmfest {:provider "vmfest"}})
+  ``` 
+  
+  and then use this method instead:
+  ```clojure
+  (require '[pallet.configure :refer [compute-service]])
+  (def vmfest (compute-service :vmfest))
+  ```
 
-### Defining the Compute Service to use with XPCOM
 
-At the REPL you can define the VMFest/VirtualBox compute service the following
-way:
 
-``` clojure
-(use '[pallet.configure :only [compute-service]])
-(def vmfest (compute-service "vmfest"))
-```
+#### Windows, Linux
 
-For a more permanent solution, define the VMFest/VirtualBox service by
-adding a `:vmfest` service definition to your `~/.pallet/config.clj`
-as shown here:
+```pallet-vmfest``` can always use web services to speak with VirtualBox, no matter the operating system.
 
-``` clojure
-(defpallet :services {:vmfest {:provider "vmfest"}})
-``` 
+1. Turn off auth (only needs to be done once)
+  ```bash
+  $ VBoxManage setproperty websrvauthlibrary null
+  ```
 
-### Defining the Compute Service to use with Web Services
+2. Start VirtualBox listening
+  ```shell
+  $ vboxwebsrv -t0
+  ```
 
-At the REPL use this:
+3. Open a clojure repl:
+  ```bash 
+  $ cd quickstart
+  $ lein deps
+  $ lein repl
+  ```
 
-```clojure
-(use '[pallet.configure :only [compute-service]])
-(def vmfest (compute-service "vmfest" :vbox-comm :ws))
-```
+4. Configure pallet to use the "vmfest" cloud provider
+  ```clojure
+  (require '[pallet.compute :refer [instantiate-provider]])
+  (def vmfest (instantiate-provider "vmfest" 
+                                      :vbox-comm :ws))
+  ```
 
-And in `~/.pallet/config.clj` use:
+  In this case there is no real config data.  But for other cloud providers, 
+  you may not want your credentials to live inside your codebase.  To avoid 
+  this you can add them to your `~/.pallet/config.clj` file:
 
-``` clojure
-(defpallet :services {:vmfest {:provider "vmfest"
-                               :vbox-comm :ws}})
-```
+  ``` clojure
+  (defpallet :services {:vmfest {:provider "vmfest"
+                                   :vbox-comm :ws}})
+  ```
+  
+  and then use this method instead:
+  ```clojure
+  (require '[pallet.configure :refer [compute-service]])
+  (def vmfest (compute-service :vmfest))
+  ```
+  
 
-### Installing Images
 
-Prior to using VMFest with Pallet for the first time, we need to setup
-at least one model image:
+### Step 3. Install a vmfest model
 
-```clojure
-(use '[pallet.compute.vmfest :only [add-image]])
-(add-image vmfest
-  "https://s3.amazonaws.com/vmfest-images/ubuntu-12.04.vdi.gz")
-```
+The vmfest model consists of two parts:
 
-You can verify that the image has been installed by running:
-```clojure
-(use '[pallet.compute :only [images]])
-(pprint (images vmfest))
-```
+  1. a virtualbox disk image (typically with a *.vdi extension) 
+  2. a meta-data file with information about the image (*.meta extension)
 
-The new image is named `:ubuntu-12.04`.
+Pre-made virtualbox images are available here: https://s3.amazonaws.com/vmfest-images/
 
-## Using VMFest From Within Pallet
+#### Option A - Let pallet-vmfest download an image for you
 
-Since we just installed an image named `:ubuntu-12.04`,
-we can proceed to use it by either referencing it directly:
+  1. From a repl,
 
-```clojure
-(use '[pallet.core :only [group-spec]])
-(def ubuntu-group 
-    (group-spec "ubuntu-vms" 
-         :node-spec {:image {:image-id :ubuntu-12.04}}))
-```
+  ```clojure
+  (require '[pallet.compute.vmfest :refer [add-image]])
+  (add-image vmfest
+               "https://s3.amazonaws.com/vmfest-images/ubuntu-13.04-64bit.vdi.gz")
+  ```
 
-or by specifying an appropriate template, just as you would do with
-any other cloud provider, e.g.:
+#### Option B - Download a vmfest virtualbox image yourself
 
-```clojure
-(use '[pallet.core :only [group-spec]])
-(def ubuntu-group 
-    (group-spec "ubuntu-vms" 
-         :node-spec {:image {:image {:os-family :ubuntu      
-                                     :os-64-bit? true }}}))
-```
+  Configuring a virtualbox image to work with vmfest can be a bit complex due to the specifics of Guest Additions and network interface configuration so this guide assumes you are using one of the vmfest images we provide.  You can explore the core [vmfest][vmfest] project for more info on creating your own image.
 
-## Configuration
+  1. Download one of our existing vmfest images + draft meta file
+
+    for example,
+    ```bash 
+    $ cd ~/Downloads
+    $ wget https://s3.amazonaws.com/vmfest-images/ubuntu-13.04-64bit.meta
+    $ wget https://s3.amazonaws.com/vmfest-images/ubuntu-13.04-64bit.vdi.gz
+    ```
+
+  2. Install the model from a repl:
+  ```clojure
+  (require '[pallet.compute.vmfest :refer [add-image]])
+  (add-image vmfest
+               "/Users/alanning/Downloads/ubuntu-13.04-64bit.vdi.gz")
+  ```
+
+  ```Note:``` File path must be absolute. 
+
+  ```Note:``` ~/.vmfest/models will contain the installed model (image + meta-data file).  You can remove the original files if you like.
+    
+
+### Step 4. Verify image has been installed
+
+  1. From a repl, 
+
+  ```clojure
+  (require '[pallet.compute :refer [images]]
+             '[clojure.pprint :refer [pprint]])
+  (pprint (images vmfest))
+  ```
+
+  ```
+  => {:ubuntu-13.04-64bit
+       {:os-type-id "Ubuntu_64",
+        :sudo-password "vmfest",
+        :no-sudo false,
+        :image-name "ubuntu-13.04-64bit",
+        :packager :apt,
+        :username "vmfest",
+        :os-family :ubuntu,
+        :os-version "13.04",
+        :uuid "/Users/alanning/.vmfest/models/vmfest-ubuntu-13.04-64bit.vdi",
+        :os-64-bit true,
+        :image-id "ubuntu-13.04-64bit",
+        :password "vmfest",
+        :description "Ubuntu 13.04 (64bit)"}}
+  ```
+
+
+### Step 5. Spin up an instance
+
+Now that the model has been installed, we can use it when defining our pallet [group-spec][group-spec] (a configuration definition used by pallet when starting instances).
+
+  1. Define a group-spec
+
+  You can reference models directly...
+
+  ```clojure
+  (require '[pallet.api :refer [group-spec]])
+  (def ubuntu-group 
+      (group-spec "ubuntu-vms" 
+                  :node-spec {:image {:image-id :ubuntu-13.04}}))
+  ```
+
+  or just specify an appropriate template (just like with any other cloud provider) ...
+
+  ```clojure
+  (require '[pallet.api :refer [group-spec]])
+  (def ubuntu-group 
+      (group-spec "ubuntu-vms" 
+                  :node-spec {:image {:image {:os-family :ubuntu      
+                                              :os-64-bit? true }}}))
+  ```
+
+  2. Spin up an instance
+
+  ```clojure
+  (require '[pallet.api :refer [converge]])
+  (pallet.api/converge {ubuntu-group 1}
+                         :compute vmfest)
+  ```
+
+  3. Get ip address
+  ```clojure
+  (require '[pallet.compute :refer [nodes]])
+  (nodes vmfest)
+  ```
+  ```
+  => (ubuntu-vms-0  ubuntu-vms  public: 192.168.56.101)
+  ```
+
+  4. SSH into box (using credentials from .meta file)
+  ```bash
+  $ ssh vmfest@192.168.56.101
+  ```
+
+  5. When you are ready, shut down the instance
+
+  ```clojure
+  (require '[pallet.api :refer [converge]])
+  (converge {ubuntu-group 0}
+              :compute vmfest)
+  ```
+
+
+  Done!
+
+
+## Next Steps
+
+Where to go from here:
+
+ * An example of [deploying a webapp][example-deploy-webapp] using Pallet
+ * The [Pallet github][pallet-github] site for a list of pre-made crates
+ * The [Pallet reference docs][pallet-reference-docs] for more details on Pallet concepts
+
+
+## Further configuration
 
 ### Networking modes
 
-Pallet-vmfest can work with 2 different network models
+```pallet-vmfest``` can work with 2 different network models
 
 - __:local__: this is the default if no further configuration is
     specified. `:local` mode provides many advantages, but requires that
@@ -249,6 +360,28 @@ Pallet-vmfest can work with 2 different network models
     is how VirtualBox sees it.
 
 
+## Troubleshooting
+
+### ```instantiate-provider``` fails
+
+If the call to ```pallet.compute/instantiate-provider``` fails, it probably means you haven't installed the model using ```add-image```.  One way this could occur is if you just place the draft .meta file template provided by vmfest into your ```~/.vmfest/models``` directory.  The draft .meta file is incomplete; the ```add-image``` function will flesh it out for you and place it in the proper location.
+
+### Obtaining a stack trace
+
+In a clojure REPL, ```*e``` contains the last exception.  So to see a stack trace you can either:
+
+  a. Use the underlying Java function:
+  ```clojure
+  (.printStackTrace *e)
+  ```
+
+  b. Use Clojure's stack trace api:
+  ```clojure
+  (use 'clojure.stacktrace)
+  (print-stack-trace *e)
+  ```
+
+
 ## License
 
 Licensed under [EPL](http://www.eclipse.org/legal/epl-v10.html)
@@ -256,6 +389,8 @@ Licensed under [EPL](http://www.eclipse.org/legal/epl-v10.html)
 [Contributors](https://www.ohloh.net/p/pallet-clj/contributors)
 
 Copyright 2010, 2011, 2012, 2013  Hugo Duncan and Antoni Batchelli
+
+
 
 
 [palletops]: http://palletops.com "Pallet site"
@@ -271,3 +406,8 @@ Copyright 2010, 2011, 2012, 2013  Hugo Duncan and Antoni Batchelli
 
 [vmfest]: https://github.com/tbatchelli/vmfest "vmfest"
 [virtualbox]: http://virtualbox.org/ "VirtualBox"
+[leiningen]: http://github.com/technomancy/leiningen "Leiningen"
+[group-spec]: http://palletops.com/doc/reference/0.8/node-types/ "group-spec documentation"
+[example-deploy-webapp]: https://github.com/pallet/example-deploy-webapp "deploying a webapp"
+[pallet-github]: https://github.com/pallet "Pallet github"
+[pallet-reference-docs]: http://palletops.com/doc/reference-0.8/ "Pallet reference docs"
