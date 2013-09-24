@@ -1,5 +1,42 @@
 # Release Notes
 
+## 0.3.0-alpha.6
+
+- Update to vmfest 0.3.0-beta.1.
+
+- Default to io-apic-enabled? set to true for all VMs.
+
+- Fix forwarding of options for vmfest/add-image and vmfest/install-image.
+
+- Fix vmfest-script task to correctly instantiate the vmfest provider.
+
+- Allow specification of hardware in image meta
+  In order for an image to be able to specify hardware requirements, use the
+  meta :hardware key in determining the machine model.
+
+- Use own image => use vmfest-image; simplify instructions; link to vmfest
+  project
+
+- Honor `:node-type`, `:bridged-interface` and `:local-interface` in
+  `node-spec`
+  Fixes #10.
+
+  These entries go under `:hardware` in the node-spec. These entries will
+  override any provider-specific network settings and the defaults values
+  when none is specified.
+
+  With this fix, pallet now will honor these directives. You can pass
+  `:node-type` (`:bridged` or `:local`) to the node spec, and also which
+  network interface to use in each case via `:bridged-interface` and
+  `:local-interface`, e.g:
+
+  ```clojure
+  (pallet.api/node-spec :image {:image-id :ubuntu-12.04}
+                       :hardware {:network-type :bridged
+                                  :bridged-interface "en0: Ethernet"}))
+  ```
+
+
 ## 0.3.0-alpha.5
 
 - Update vmfest to 0.3.0-alpha.5.
@@ -49,7 +86,7 @@
 - Update to vmfest 0.3.0-alpha.3
 
 - Fix image install from 'lein pallet' where .meta was ignored.
-  This fix adds the requirement to always specify the 'os-64-bit' when 
+  This fix adds the requirement to always specify the 'os-64-bit' when
   installing Vagrant boxes.
 
 - Remove vbox objects from hardware map
@@ -101,7 +138,7 @@
 - Update to vmfest 0.2.7 which supports VirtualBox 4.2.x.
 
 - Ignore inaccessible Machines
-  VirtualBox Machines that are not accessible can't be inspected. Pallet 
+  VirtualBox Machines that are not accessible can't be inspected. Pallet
   assumes it can query all the nodes, but this breaks if the node (machine)
   is not accessible.
 
