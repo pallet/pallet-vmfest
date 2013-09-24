@@ -1,6 +1,6 @@
 <html lang="en">
   <head>
-    <title>pallet.task.add-vmfest-image documentation</title>
+    <title>pallet.task.vmfest-script documentation</title>
     <link href="css/default.css" type="text/css" rel="stylesheet" />
     <link href="css/codox-md.css" type="text/css" rel="stylesheet" />
     <script type="text/javascript" src="js/jquery.min.js"></script>
@@ -42,35 +42,29 @@
       <div id="vars" class="sidebar">
         <h3>Public Vars</h3>
         <ul class="ns-var-links">
-          <li class="ns-var-list"><a class="ns-var-link ns-var-name" href="pallet.task.add-vmfest-image.html#var-add-vmfest-image">add-vmfest-image</a></li>
+          <li class="ns-var-list"><a class="ns-var-link ns-var-name" href="pallet.task.vmfest-script.html#var-vmfest-script">vmfest-script</a></li>
         </ul>
       </div>
     </navigation>
     <article>
       <div id="content" class="namespace-docs">
-        <h2 class="namespace-title">pallet.task.add-vmfest-image documentation</h2>
-        <div class="doc"><p>A task for adding vmfest images</p>
+        <h2 class="namespace-title">pallet.task.vmfest-script documentation</h2>
+        <div class="doc"><p>A task for running vmfest scripts</p>
 </div>
         <div class="ns-vars">
           <div class="public">
-            <h3><a id="var-add-vmfest-image" class="source var-name" href="https://github.com/pallet/pallet-repl/blob/develop/src/pallet/task/add_vmfest_image.clj#L35">add-vmfest-image</a></h3>
+            <h3><a id="var-vmfest-script" class="source var-name" href="https://github.com/pallet/pallet-repl/blob/develop/src/pallet/task/vmfest_script.clj#L10">vmfest-script</a></h3>
             <h4 class="var-type fn" id="var-type">fn</h4>
-            <div class="usage">[request &amp; args]</div>
+            <div class="usage">[request filename]</div>
             
             
-            <div class="doc"><p>Install an image for vmfest.</p>
+            <div class="doc"><p>A task for running vmfest scripts.</p>
 
-<p>For vagrant .box files, you will meed to specify the os-family,
-os-version, and os-64-bit, as these are not available in the
-.box file.
-add-vmfest-image image-url
-Usage:</p>
+<pre><code>lein pallet vmfest-script filename
+</code></pre>
 
-<p> Switches          Default  Desc <br />
- --------          -------  ---- <br />
- -o, --os-family            Specify the os family <br />
- -v, --os-version           Specify the os version <br />
- -l, --os-64-bit            Specify the os is 64 bit </p>
+<p>The file should be a clojure script that will be executed. <em>vmfest</em> is
+bound to the vmfest compute service</p>
 </div>
           </div>
         </div>

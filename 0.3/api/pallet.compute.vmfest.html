@@ -29,14 +29,14 @@
       </div>
     </div>
       <div id="header">
-        <h1><a href="http://palletops.com"><span class="project-title">Pallet-vmfest 0.3.0-alpha.5 API documentation</span></a></h1>
+        <h1><a href="http://palletops.com"><span class="project-title">Pallet-vmfest 0.3.0-alpha.6 API documentation</span></a></h1>
       </div>
     </header>
     <navigation>
       <div id="namespaces" class="sidebar">
         <h3>Namespaces</h3>
         <ul class="ns-links">
-          <li class="ns-list"><a class="ns-link ns-name" href="pallet.compute.vmfest.html">pallet.compute.vmfest</a></li><li class="ns-list"><a class="ns-link ns-name" href="pallet.compute.vmfest.properties.html">pallet.compute.vmfest.properties</a></li><li class="ns-list"><a class="ns-link ns-name" href="pallet.task.add-vmfest-image.html">pallet.task.add-vmfest-image</a></li>
+          <li class="ns-list"><a class="ns-link ns-name" href="cfg.current.html">cfg.current</a></li><li class="ns-list"><a class="ns-link ns-name" href="pallet.compute.vmfest.html">pallet.compute.vmfest</a></li><li class="ns-list"><a class="ns-link ns-name" href="pallet.compute.vmfest.properties.html">pallet.compute.vmfest.properties</a></li><li class="ns-list"><a class="ns-link ns-name" href="pallet.task.add-vmfest-image.html">pallet.task.add-vmfest-image</a></li><li class="ns-list"><a class="ns-link ns-name" href="pallet.task.vmfest-script.html">pallet.task.vmfest-script</a></li>
         </ul>
       </div>
       <div id="vars" class="sidebar">
@@ -202,7 +202,7 @@ following way (in order):</p>
 </div>
         <div class="ns-vars">
           <div class="public">
-            <h3><a id="var-add-image" class="source var-name" href="https://github.com/pallet/pallet-repl/blob/develop/src/pallet/compute/vmfest.clj#L153">add-image</a></h3>
+            <h3><a id="var-add-image" class="source var-name" href="https://github.com/pallet/pallet-repl/blob/develop/src/pallet/compute/vmfest.clj#L156">add-image</a></h3>
             <h4 class="var-type fn" id="var-type">fn</h4>
             <div class="usage">[compute url-string &amp; {:as options}]</div>
             
@@ -211,7 +211,7 @@ following way (in order):</p>
 specified <code>url-string</code>.</p>
 </div>
           </div><div class="public">
-            <h3><a id="var-add-vbox-to-classpath" class="source var-name" href="https://github.com/pallet/pallet-repl/blob/develop/src/pallet/compute/vmfest.clj#L198">add-vbox-to-classpath</a></h3>
+            <h3><a id="var-add-vbox-to-classpath" class="source var-name" href="https://github.com/pallet/pallet-repl/blob/develop/src/pallet/compute/vmfest.clj#L201">add-vbox-to-classpath</a></h3>
             <h4 class="var-type fn" id="var-type">fn</h4>
             <div class="usage">[comm]</div>
             
@@ -225,7 +225,7 @@ nothing, and if the wrong library is already in the classpath, it'll
 thrown an exception.</p>
 </div>
           </div><div class="public">
-            <h3><a id="var-extract-jar" class="source var-name" href="https://github.com/pallet/pallet-repl/blob/develop/src/pallet/compute/vmfest.clj#L187">extract-jar</a></h3>
+            <h3><a id="var-extract-jar" class="source var-name" href="https://github.com/pallet/pallet-repl/blob/develop/src/pallet/compute/vmfest.clj#L190">extract-jar</a></h3>
             <h4 class="var-type fn" id="var-type">fn</h4>
             <div class="usage">[jar-path]</div>
             
@@ -233,7 +233,7 @@ thrown an exception.</p>
             <div class="doc"><p>Extract a jar on the classpath to the filesystem, returning its URL.</p>
 </div>
           </div><div class="public">
-            <h3><a id="var-find-images" class="source var-name" href="https://github.com/pallet/pallet-repl/blob/develop/src/pallet/compute/vmfest.clj#L160">find-images</a></h3>
+            <h3><a id="var-find-images" class="source var-name" href="https://github.com/pallet/pallet-repl/blob/develop/src/pallet/compute/vmfest.clj#L163">find-images</a></h3>
             <h4 class="var-type fn" id="var-type">fn</h4>
             <div class="usage">[service template]</div>
             
@@ -241,7 +241,7 @@ thrown an exception.</p>
             <div class="doc"><p>Determine the best match image for a given image template</p>
 </div>
           </div><div class="public">
-            <h3><a id="var-has-image%3F" class="source var-name" href="https://github.com/pallet/pallet-repl/blob/develop/src/pallet/compute/vmfest.clj#L177">has-image?</a></h3>
+            <h3><a id="var-has-image%3F" class="source var-name" href="https://github.com/pallet/pallet-repl/blob/develop/src/pallet/compute/vmfest.clj#L180">has-image?</a></h3>
             <h4 class="var-type fn" id="var-type">fn</h4>
             <div class="usage">[service image-key]</div>
             
@@ -249,15 +249,15 @@ thrown an exception.</p>
             <div class="doc"><p>Predicate to test for the presence of a specific image</p>
 </div>
           </div><div class="public">
-            <h3><a id="var-install-image" class="source var-name" href="https://github.com/pallet/pallet-repl/blob/develop/src/pallet/compute/vmfest.clj#L165">install-image</a></h3>
+            <h3><a id="var-install-image" class="source var-name" href="https://github.com/pallet/pallet-repl/blob/develop/src/pallet/compute/vmfest.clj#L168">install-image</a></h3>
             <h4 class="var-type fn" id="var-type">fn</h4>
-            <div class="usage">[service url {:as options}]</div>
+            <div class="usage">[service url &amp; {:as options}]</div>
             
             
             <div class="doc"><p>Install the image from the specified <code>url</code></p>
 </div>
           </div><div class="public">
-            <h3><a id="var-publish-image" class="source var-name" href="https://github.com/pallet/pallet-repl/blob/develop/src/pallet/compute/vmfest.clj#L171">publish-image</a></h3>
+            <h3><a id="var-publish-image" class="source var-name" href="https://github.com/pallet/pallet-repl/blob/develop/src/pallet/compute/vmfest.clj#L174">publish-image</a></h3>
             <h4 class="var-type fn" id="var-type">fn</h4>
             <div class="usage">[service image blobstore container {:keys [path], :as options}]</div>
             
