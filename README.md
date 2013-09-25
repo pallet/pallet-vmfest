@@ -10,7 +10,7 @@ You can learn more about how to use Pallet from the online [documentation][docs]
 1. A Pallet clojure project
 
   The simplest way to create one is to install [leiningen][leiningen] and then run the following command:
-  ```bash 
+  ```bash
   $ lein new pallet quickstart
   ```
 
@@ -28,8 +28,8 @@ You can learn more about how to use Pallet from the online [documentation][docs]
 If you use leiningen, add the following dependencies to your project.clj file (pallet will already be there if you used the leiningen pallet template):
 
 ``` clojure
-:dependencies [[com.palletops/pallet "0.8.0-beta.9"]
-               [com.palletops/pallet-vmfest "0.3.0-alpha.6"]]
+:dependencies [[com.palletops/pallet "0.8.0-RC.2"]
+               [com.palletops/pallet-vmfest "0.3.0-beta.1"]]
 ```
 
 If you use maven, add the following to your pom.xml file:
@@ -39,12 +39,12 @@ If you use maven, add the following to your pom.xml file:
   <dependency>
     <groupId>com.palletops</groupId>
     <artifactId>pallet</artifactId>
-    <version>0.8.0-beta.9</version>
+    <version>0.8.0-RC.2</version>
   </dependency>
   <dependency>
     <groupId>com.palletops</groupId>
     <artifactId>pallet-vmfest</artifactId>
-    <version>0.3.0-alpha.6</version>
+    <version>0.3.0-beta.1</version>
   </dependency>
 <dependencies>
 ```
@@ -56,7 +56,7 @@ If you use maven, add the following to your pom.xml file:
 ```pallet-vmfest``` can use XPCOM to transparently communicate with VirtualBox on OSX.  (If your Linux distro supports XPCOM then this method will also work for you)
 
 1. Open a clojure repl:
-  ```bash 
+  ```bash
   $ cd quickstart
   $ lein deps
   $ lein repl
@@ -67,17 +67,17 @@ If you use maven, add the following to your pom.xml file:
   ```clojure
   (require '[pallet.compute :refer [instantiate-provider]])
   (def vmfest (instantiate-provider "vmfest"))
-  
+
   ```
 
-  In this case there is no real config data.  But for other cloud providers, 
-  you may not want your credentials to live inside your codebase.  To avoid 
+  In this case there is no real config data.  But for other cloud providers,
+  you may not want your credentials to live inside your codebase.  To avoid
   this you can add them to your `~/.pallet/config.clj` file:
 
   ``` clojure
   (defpallet :services {:vmfest {:provider "vmfest"}})
-  ``` 
-  
+  ```
+
   and then use this method instead:
   ```clojure
   (require '[pallet.configure :refer [compute-service]])
@@ -101,7 +101,7 @@ If you use maven, add the following to your pom.xml file:
   ```
 
 3. Open a clojure repl:
-  ```bash 
+  ```bash
   $ cd quickstart
   $ lein deps
   $ lein repl
@@ -110,32 +110,32 @@ If you use maven, add the following to your pom.xml file:
 4. Configure pallet to use the "vmfest" cloud provider
   ```clojure
   (require '[pallet.compute :refer [instantiate-provider]])
-  (def vmfest (instantiate-provider "vmfest" 
+  (def vmfest (instantiate-provider "vmfest"
                                       :vbox-comm :ws))
   ```
 
-  In this case there is no real config data.  But for other cloud providers, 
-  you may not want your credentials to live inside your codebase.  To avoid 
+  In this case there is no real config data.  But for other cloud providers,
+  you may not want your credentials to live inside your codebase.  To avoid
   this you can add them to your `~/.pallet/config.clj` file:
 
   ``` clojure
   (defpallet :services {:vmfest {:provider "vmfest"
                                    :vbox-comm :ws}})
   ```
-  
+
   and then use this method instead:
   ```clojure
   (require '[pallet.configure :refer [compute-service]])
   (def vmfest (compute-service :vmfest))
   ```
-  
+
 
 
 ### Step 3. Install a vmfest model
 
 The vmfest model consists of two parts:
 
-  1. a virtualbox disk image (typically with a *.vdi extension) 
+  1. a virtualbox disk image (typically with a *.vdi extension)
   2. a meta-data file with information about the image (*.meta extension)
 
 Pre-made virtualbox images are available here: https://s3.amazonaws.com/vmfest-images/
@@ -157,7 +157,7 @@ Pre-made virtualbox images are available here: https://s3.amazonaws.com/vmfest-i
   1. Download one of our existing vmfest images + draft meta file
 
     for example,
-    ```bash 
+    ```bash
     $ cd ~/Downloads
     $ wget https://s3.amazonaws.com/vmfest-images/ubuntu-13.04-64bit.meta
     $ wget https://s3.amazonaws.com/vmfest-images/ubuntu-13.04-64bit.vdi.gz
@@ -170,14 +170,14 @@ Pre-made virtualbox images are available here: https://s3.amazonaws.com/vmfest-i
                "/Users/alanning/Downloads/ubuntu-13.04-64bit.vdi.gz")
   ```
 
-  ```Note:``` File path must be absolute. 
+  ```Note:``` File path must be absolute.
 
   ```Note:``` ~/.vmfest/models will contain the installed model (image + meta-data file).  You can remove the original files if you like.
-    
+
 
 ### Step 4. Verify image has been installed
 
-  1. From a repl, 
+  1. From a repl,
 
   ```clojure
   (require '[pallet.compute :refer [images]]
@@ -213,18 +213,18 @@ Now that the model has been installed, we can use it when defining our pallet [g
 
   ```clojure
   (require '[pallet.api :refer [group-spec]])
-  (def ubuntu-group 
-      (group-spec "ubuntu-vms" 
-                  :node-spec {:image {:image-id :ubuntu-13.04}}))
+  (def ubuntu-group
+      (group-spec "ubuntu-vms"
+                  :node-spec {:image {:image-id :ubuntu-13.04-64bit}}))
   ```
 
   or just specify an appropriate template (just like with any other cloud provider) ...
 
   ```clojure
   (require '[pallet.api :refer [group-spec]])
-  (def ubuntu-group 
-      (group-spec "ubuntu-vms" 
-                  :node-spec {:image {:image {:os-family :ubuntu      
+  (def ubuntu-group
+      (group-spec "ubuntu-vms"
+                  :node-spec {:image {:image {:os-family :ubuntu
                                               :os-64-bit? true }}}))
   ```
 
@@ -282,7 +282,7 @@ Where to go from here:
     the image used enables two network interfaces. In exchange, `:local`
     mode is more convenient in general than `:bridged` mode that we will
     discuss later:
-    
+
     - VMs do not interact with external DHCP servers. This is relevant
       when repeatedly starting and destroying VMs. Home routers and
       office environments are not very happy when computers appear and
@@ -294,29 +294,29 @@ Where to go from here:
       home to the coffee shop, your VMs will continue to work.
     - You can use many different internal networks, which can be
       useful when trying to emulate real network setups.
-      
+
     On the other side, in this mode, VMs are not accessible from
     outside your host computer.
 
     By default pallet-vmfest will use :local mode, which is equivalent
     to adding the following entries to the vmfest provider definition
     in `~/.pallet/config.clj`:
-    
+
     ```clojure
     :default-network-type :local
     :default-local-interface "vboxnet0"
     ```
-    
+
     `:default-local-interface` determines what local-only network will
     be used (by default named `vboxnet0`, but you can use any as long
-    as the naming complies with `vboxnetN`.    
+    as the naming complies with `vboxnetN`.
 
 - __:bridged__: In this mode, each VM will use one of the host's
     network interface directly to aquire a valid IP address in
     whichever network the interface is on. This means also that the
     selected host network interface needs to be on a valid network
     (i.e. it won't work if your computer is not plugged into any
-    network) 
+    network)
 
     Why would you want this networking mode?
 
@@ -339,13 +339,13 @@ Where to go from here:
       being reachable.
 
     To use `:bridged` mode, you need to add the following two entries
-    in `~/.pallet.config.clj`, e.g.: 
+    in `~/.pallet.config.clj`, e.g.:
 
     ```clojure
     :default-network-type :bridged
     :default-bridged-interface "en1: Wi-Fi (AirPort)"
     ```
-   
+
     Notice that getting the name of the briged interface right is an
     art in itself. But this art can be reduced to technique if you run
     the following on your shell:
@@ -353,7 +353,7 @@ Where to go from here:
     ```bash
     $ VBoxManage list bridgedifs | grep ^Name
     ```
-    
+
     You need to use the name of your inteface verbatim in
     `:default-bridged-interface`, orelse it won't work. And it doesn't
     matter how this interface is named anywhere else. All it matters
