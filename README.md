@@ -215,7 +215,7 @@ Now that the model has been installed, we can use it when defining our pallet [g
   (require '[pallet.api :refer [group-spec]])
   (def ubuntu-group 
       (group-spec "ubuntu-vms" 
-                  :node-spec {:image {:image-id :ubuntu-13.04}}))
+                  :node-spec {:image {:image-id :ubuntu-13.04-64bit}}))
   ```
 
   or just specify an appropriate template (just like with any other cloud provider) ...
