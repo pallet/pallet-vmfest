@@ -1,5 +1,9 @@
 # Release Notes
 
+## 0.3.0-beta.1
+
+- Update to vmfest 0.3.0-beta.2.
+
 ## 0.3.0-alpha.6
 
 - Update to vmfest 0.3.0-beta.1.
