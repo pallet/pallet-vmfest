@@ -29,7 +29,7 @@ If you use leiningen, add the following dependencies to your project.clj file (p
 
 ``` clojure
 :dependencies [[com.palletops/pallet "0.8.0-RC.2"]
-               [com.palletops/pallet-vmfest "0.3.0-beta.1"]]
+               [com.palletops/pallet-vmfest "0.3.0-beta.2"]]
 ```
 
 If you use maven, add the following to your pom.xml file:
@@ -44,7 +44,7 @@ If you use maven, add the following to your pom.xml file:
   <dependency>
     <groupId>com.palletops</groupId>
     <artifactId>pallet-vmfest</artifactId>
-    <version>0.3.0-beta.1</version>
+    <version>0.3.0-beta.2</version>
   </dependency>
 <dependencies>
 ```
