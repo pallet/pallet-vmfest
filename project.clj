@@ -1,4 +1,4 @@
-(defproject com.palletops/pallet-vmfest "0.3.0-beta.2"
+(defproject com.palletops/pallet-vmfest "0.3.0-SNAPSHOT"
   :description "A pallet provider for using vmfest."
   :url "https://github.com/pallet/pallet-vmfest"
   :license {:name "Eclipse Public License"
