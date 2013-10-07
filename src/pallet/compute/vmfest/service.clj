@@ -882,7 +882,7 @@ Accessible means that VirtualBox itself can access the machine. In
                     (:model-path locations) options)
     (when-let [job (apply
                     image/setup-model
-                    url server :models-dir (:model-path locations)
+                    url server :model-path (:model-path locations)
                     (apply concat options))]
       (swap! images merge (:meta job))))
   (publish-image [service image-kw blobstore container {:keys [path]}]
