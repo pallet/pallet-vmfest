@@ -708,14 +708,16 @@ Accessible means that VirtualBox itself can access the machine. In
     ;; need to fetch the meta of that image and merge its contents
     ;; with the contents of the template.
     (let [template (image-template-from-group-spec group-spec)
-          image (or (image-from-template
-                     @images template)
-                    (throw (RuntimeException.
-                            (format
-                             "No matching image for %s in %s (using %s)"
-                             (pr-str (:image group-spec))
-                             @images
-                             locations))))]
+          image (or (image-from-template @images template)
+                    (let [msg (format
+                               "No matching image for %s in %s (using %s)"
+                               (pr-str (:image group-spec))
+                               @images
+                               locations)]
+                      (logging/error msg)
+                      (throw (ex-info msg {:type :pallet/unkown-image
+                                           :template template
+                                           :images @images}))))]
       (update-in
        group-spec [:image]
        #(merge
@@ -730,14 +732,15 @@ Accessible means that VirtualBox itself can access the machine. In
     (try
       (let [template (image-template-from-group-spec group-spec)
             _ (logging/debugf "run-nodes with template %s" template)
-            image (or (image-from-template
-                       @images template)
-                      (throw (RuntimeException.
-                              (format
-                               "No matching image for %s in %s (using %s)"
-                               (pr-str (:image group-spec))
-                               @images
-                               locations))))
+            image (or (image-from-template @images template)
+                      (let [msg (format
+                                 "No matching image for %s in %s (using %s)"
+                                 (pr-str (:image group-spec))
+                                 @images
+                                 locations)]
+                        (logging/error msg)
+                        (throw (ex-info msg {:type :pallet/unkown-image
+                                             :template template}))))
             group-name (name (:group-name group-spec))
             machines (operable-machines server)
             current-machines-in-group (filter
