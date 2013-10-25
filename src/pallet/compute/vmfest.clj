@@ -242,8 +242,8 @@
       (logging/infof "Connecting to VirtualBox via %s"
                      (if (= :ws comm) "Web Services" "XPCom"))
       (let [jar-path (if (= :ws comm)
-                       "vboxjws-4.12.jar"
-                       "vboxjxpcom-4.12.jar")
+                       "vboxjws-4.3.0.jar"
+                       "vboxjxpcom-4.3.0.jar")
             ;; The classloaders that come with the JVM cannot
             ;; load a jar from within a jar. Instead, we'll
             ;; copy the vboxj* jar from the pallet-vmfest jar
