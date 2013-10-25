@@ -765,7 +765,17 @@ Accessible means that VirtualBox itself can access the machine. In
             create-nodes-fn (get-in environment
                                     [:algorithms :vmfest :create-nodes-fn]
                                     parallel-create-nodes)
-            image-map (image @images)
+            image-map (or (image @images)
+                          ;; when image-id is present, there is no
+                          ;; guarantee that the image actually exists,
+                          ;; so we'll let the user know.
+                          (throw
+                           (ex-info
+                            (format "The selected image %s is not registered in vmfest  (valid are %s)"
+                                    image (keys @images))
+                            {:type :pallet/unkown-image
+                             :image image
+                             :known-images (keys @images)})))
             ;; select the network config, giving preference to the
             ;; node-spec first, then image meta, and finally the
             ;; provider config.
