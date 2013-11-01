@@ -1,10 +1,12 @@
 {:dev {:dependencies
-       [[org.clojure/clojure "1.4.0"]
-        [com.palletops/pallet "0.8.0-beta.10"]
-        [com.palletops/pallet "0.8.0-beta.10" :classifier "tests"]
+       [[org.clojure/clojure "1.5.1"]
+        [com.palletops/pallet "0.9.0-SNAPSHOT"]
+        [com.palletops/pallet "0.9.0-SNAPSHOT" :classifier "tests"]
         [ch.qos.logback/logback-classic "1.0.9"]]
        :plugins [[codox/codox.leiningen "0.6.4"]
-                 [lein-marginalia "0.7.1"]]}
+                 [lein-marginalia "0.7.1"]]
+       :injections [(require 'pallet.log)
+                    (pallet.log/default-log-config)]}
  :no-checkouts {:checkout-shares ^:replace []} ; disable checkouts
  :doc {:dependencies [[com.palletops/pallet-codox "0.1.0"]]
        :codox {:writer codox-md.writer/write-docs

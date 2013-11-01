@@ -1,23 +1,16 @@
 (ns pallet.compute.vmfest-test
   (:require
    [clojure.test :refer :all]
+   [pallet.actions :refer [exec-script*]]
    [pallet.compute.vmfest :refer :all]
-   [pallet.core :refer [server-spec]]
    [pallet.compute :refer [nodes instantiate-provider]]
-   [pallet.crate.automated-admin-user :refer [automated-admin-user]]
+   [pallet.crate.automated-admin-user :as automated-admin-user
+    :refer [create-admin-user]]
    [pallet.live-test :refer [images test-for test-nodes]]
+   [pallet.group :refer [converge group-spec lift]]
+   [pallet.plan :refer [plan-fn]]
+   [pallet.spec :refer [server-spec]]
    [useful.ns :refer [alias-var]]))
-
-
-;;; Initialise the vbox communication
-(add-vbox-to-classpath (or (System/getProperty "vbox-comm") :xpcom))
-
-(try
-  (use '[pallet.api :only [plan-fn]])
-  (catch Exception _
-    (println _)
-    (use '[pallet.phase :only [phase-fn]])
-    (alias-var 'plan-fn (ns-resolve 'pallet.phase 'phase-fn))))
 
 ;; feature predicates
 (defmacro ^{:private true} get-has-feature
@@ -57,13 +50,39 @@
         [compute node-map node-types [:configure-dev :install :configure]]
         {:vmfest-test-host
          (server-spec
-          :phases
-          {:bootstrap (plan-fn (automated-admin-user))}
-          :image image :count 1)}
-      (let [service (instantiate-provider :vmfest)
+          {:phases
+           {:bootstrap (plan-fn [session] (create-admin-user session))}
+           :image image :count 1})}
+      (let [service (instantiate-provider :vmfest {})
             node (first (:vmfest-test-host node-map))]
         (clojure.tools.logging/infof "node-types %s" node-types)
         (clojure.tools.logging/infof "node-map %s" node-map)
         (is node)
         (is (seq (nodes service)))
         (test-tags node)))))
+
+(deftest converge-test
+  (testing "basic converge"
+    (let [spec (server-spec {})
+          node-spec {:image {:image-id :ubuntu-13.04-64bit :os-family :ubuntu}}
+          group (group-spec :agroup {:extends [spec] :node-spec node-spec})
+          service (instantiate-provider :vmfest {})]
+      (converge (assoc group :count 1) :compute service :os-detect false)
+      (converge (assoc group :count 0) :compute service :os-detect false)))
+  (testing "converge with a-a-u"
+    (let [spec (server-spec
+                {:extends [(automated-admin-user/server-spec {})]
+                 :phases
+                 {:configure (plan-fn [session]
+                               (exec-script* session "ls"))}})
+          node-spec {:image {:image-id :ubuntu-13.04-64bit :os-family :ubuntu}}
+          group (group-spec :agroup {:extends [spec] :node-spec node-spec})
+          service (instantiate-provider :vmfest {})
+          result (converge (assoc group :count 1) :compute service)]
+      (is (= 1 (count (:new-targets result))))
+      (is (= 3 (count (:results result))))
+      (is (= #{:settings :bootstrap :configure}
+             (set (map :phase (:results result)))))
+      (let [result (converge (assoc group :count 0) :compute service)]
+        (is (zero? (count (:new-targets result))))
+        (is (= 1 (count (:old-targets result))))))))

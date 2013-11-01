@@ -10,29 +10,33 @@
     (throw vbox-load-exception)))
 
 (ns pallet.compute.vmfest.service
- "Contains the bulk of the implementation of `pallet.compute.vmfest`.
+  "Contains the bulk of the implementation of `pallet.compute.vmfest`.
 This is so all the references to vmfest are contained, thus allowing
 pallet-vmfest to dynamically load the right virtualbox library to the
 classpath before vmfest itself is loaded"
+  (:refer-clojure :exclude [proxy])
   (:require
+   [clojure.core.async :refer [<! >! >!! chan go thread]]
    [clojure.java.io :as io]
    [clojure.string :as string]
-   [clojure.tools.logging :as logging]
-   [pallet.action-plan :as action-plan]
+   [clojure.tools.logging :as logging :refer [debugf]]
+   [pallet.utils.async :refer [go-try]]
    [pallet.blobstore :as blobstore]
    [pallet.common.filesystem :as filesystem]
    [pallet.compute :as compute]
    [pallet.compute.implementation :as implementation]
    [pallet.compute.jvm :as jvm]
+   [pallet.compute.protocols :as impl]
    [pallet.compute.vmfest.properties]   ; needs to be before vmfest
    [pallet.compute.vmfest.protocols :refer :all]
+   [pallet.core.context :refer [with-domain]]
    [pallet.environment :as environment]
-   [pallet.execute :as execute]
-   [pallet.futures :as futures]
+   [pallet.exception :refer [combine-exceptions]]
+   [pallet.kb :refer [packager-for-os]]
    [pallet.node :as node]
-   [pallet.script :as script]
-   [pallet.stevedore :as stevedore]
-   [pallet.utils :as utils]
+   [pallet.utils :as utils :refer [maybe-assoc]]
+   [pallet.utils.rex-map :refer [merge-rex-maps]]
+   [pallet.user :refer [make-user]]
    [vmfest.manager :as manager]
    [vmfest.virtualbox.enums :as enums]
    [vmfest.virtualbox.image :as image]
@@ -63,39 +67,6 @@ classpath before vmfest itself is loaded"
 
 (get-has-feature)
 
-(defn has-pallet-ssh-execute?
-  []
-  (try
-    (require 'pallet.ssh.execute)
-    true
-    (catch Exception e)))
-
-(defmacro def-ssh-script-on-target
-  []
-  (if (has-pallet-ssh-execute?)
-    `(use '[pallet.ssh.execute :only [~'ssh-script-on-target]])
-    `(defn ssh-script-on-target
-       [session# action# action-type# script#]
-       {:pre [(-> session# :server :node)
-              (ns-resolve '~'pallet.execute '~'remote-sudo)]}
-       (let [os-family# (get-in session# [:server :image :os-family])]
-         [((ns-resolve '~'pallet.execute '~'remote-sudo)
-           (node/primary-ip (-> session# :server :node))
-           script# (:user session#)
-           {:pty (not= os-family# :fedora)})
-          session#]))))
-
-(def-ssh-script-on-target)
-
-(defmacro def-make-user []
-  (if (has-feature? core-user)
-    '(defn make-user [username & {:as args}]
-       (pallet.core.user/make-user username args))
-    '(defn make-user [username & args]
-       (apply pallet.utils/make-user username args))))
-
-(def-make-user)
-
 ;; fallback os family translation data. This should be removed once
 ;; everyone is using metadata in their images.
 (def os-family-name
@@ -119,6 +90,13 @@ classpath before vmfest itself is loaded"
     :private true}
   default-vm-session-type "headless") ; gui, headless or sdl
 
+(defn- machine-for
+  "Return the vmfest machine for the given node."
+  [node]
+  (manager/get-machine
+   (.server (:compute-service node))
+   (:id node)))
+
 (defn- image-meta-from-node
   "Obtains the image metadata from the node's extra parameters"
   [node]
@@ -137,165 +115,177 @@ Accessible means that VirtualBox itself can access the machine. In
   (session/with-no-session node [m]
     (machine/get-attribute m :accessible?)))
 
+(defn run-state [node]
+  (if (node-accessible? node)
+    (let [state (manager/state node)]
+      (cond
+       (#{:aborted :stuck} state) :terminated
+       (#{:powered-off :teleported :teleporting :starting} state) :stopped
+       (#{:saved :paused :saving :restoring
+          :teleporting-paused-vm :teleporting-in
+          :setting-up :first-online :last-online
+          :first-transient :last-transient} state) :suspended
+       (#{:running :live-snapshotting :stopping
+          :deleting-snapshot-online :deleting-snapshot-paused
+          :restoring-snapshot :deleting-snapshot} state) :running))
+    :stopped))
+
 (defn- node-running?
   [node]
   (and
      (node-accessible? node)
      (= :running (manager/state node))))
 
-(deftype VmfestNode
-    [^vmfest.virtualbox.model.Machine node service]
-  pallet.node/Node
-  (ssh-port [_] 22)
-  (primary-ip [_]
-    (try
-      (manager/get-ip node)
-      (catch Exception _
-        ;; fallback to the ip stored in the node's extra parameters
-        (manager/get-extra-data node ip-tag))))
-  (private-ip [_] nil)
-  (is-64bit? [_]
-    (let [meta (image-meta-from-node node)
-          os-64-bit (:os-64-bit meta)
-          os-type-id (:os-type-id meta)]
-      ;; either :os-64-bit is present, or we get it from :os-type-id
-      ;; if present, or we try to guess from the VM itself
-      (or (or os-64-bit
-              (when os-type-id
-                (boolean (re-find #"_64" os-type-id))))
-          ;; try guessing it from the VBox Machine object. This should
-          ;; not be necessary in the near future. Remove after 0.3
-          (do
-            (logging/warnf
-             "Cannot determine if machine is 64 bit from metadata: '%s'" meta)
-            (if-let [os-type-id (session/with-no-session
-                                  node [m] (.getOSTypeId m))]
-              (boolean (re-find #"_64" os-type-id))
-              (logging/error
-               "Cannot determine if machine is 64 bit by any means."))))))
-  (group-name [_]
-    (let [group-name (manager/get-extra-data node group-name-tag)]
-      (if (string/blank? group-name)
-        (manager/get-extra-data node group-name-tag)
-        group-name)))
-  (hostname [_]
-    (session/with-no-session node [m]
-      (.getName m)))
-  (os-family [_]
-    (let [meta (image-meta-from-node node)
-          os-family-from-meta (:os-family meta)]
-      (if os-family-from-meta
-        os-family-from-meta
-        ;; try guessing it from the VBox Machine object. This should
-        ;; not be necessary in the near future. Remove after 0.3
-        (do
-          (logging/warnf
-           "Cannot get os-family from node's metadata '%s'. Trying to guess"
-           meta)
-          (let [os-name (session/with-no-session node [m] (.getOSTypeId m))]
-            (or (os-family-from-name os-name os-name)
-                :centos) ;; todo: remove this hack!
-            )))))
-  (os-version [_]
-    (let [meta (image-meta-from-node node)]
-      (or
-       (:os-version meta))))
-  (running? [_]
-    (node-running? node))
-  (terminated? [_] false)
-  (id [_] (:id node))
-  (compute-service [_] service))
-
-(when-feature node-packager
-  (extend-type VmfestNode
-    pallet.node/NodePackager
-    (packager [n]
-      (compute/packager-for-os (node/os-family n) (node/os-version n)))))
-
-(when-feature node-image
-  (extend-type VmfestNode
-    pallet.node/NodeImage
-    (image-user [node]
-      (let [meta (image-meta-from-node (.node node))
-            username (:username meta)]
-        (when username
-          (utils/apply-map
-           make-user
-           username
-           (merge
-            {:public-key-path nil :private-key-path nil}
-            (select-keys meta [:password :sudo-password :no-sudo]))))))))
-
 (def enum-to-kw (comp keyword lower-case str))
 (defmacro doall->> [& args]
   `(doall (->> ~(last args) ~@(butlast args))))
 
-(when-feature node-hardware
-  (extend-type VmfestNode
-    pallet.node/NodeHardware
-    (hardware [node]
-      (session/with-session (.node node) :shared [session m]
-        {:cpus [{:cores (machine/get-attribute m :cpu-count)}]
-         :ram (machine/get-attribute m :memory-size)
-         :disks (->>
-                 (machine/get-attribute m :medium-attachments)
-                 (map bean)
-                 (map #(dissoc % :class :passthrough))
-                 (doall->>
-                  (map
-                   (fn [a]
-                     (let [a (update-in
-                              a [:medium]
-                              (fn [medium]
-                                (let [m (medium/map-from-IMedium medium nil)]
-                                  (-> m
-                                      (dissoc :children :parent :base :type)
-                                      (update-in
-                                       [:medium-format]
-                                       (comp keyword lower-case #(.getName %)))
-                                      (assoc :medium-type
-                                        (enum-to-kw (:type m)))
-                                      (assoc :size (:logical-size m (:size m)))
-                                      (assoc :physical-size (:size m))
-                                      (update-in [:device-type] enum-to-kw)
-                                      (update-in [:state] enum-to-kw)
-                                      (update-in [:format] enum-to-kw)
-                                      (update-in [:machine-ids]
-                                                 #(vec (map identity %)))))))]
-                       (merge (:medium a)
-                              (-> a
-                                  (dissoc :medium :nonRotational :wrapped
-                                          :typedWrapped)
-                                  (assoc :ssd (:nonRotational a))))))))
-                 (map (fn [m]
-                        (update-in
-                         m [:type]
-                         (comp keyword lower-case #(.name %)))))
-                 vec)}))))
+(defn primary-ip [node]
+  (try
+    (manager/get-ip node)
+    (catch Exception _
+      ;; fallback to the ip stored in the node's extra parameters
+      (manager/get-extra-data node ip-tag))))
 
-(defn find-node-proxy-adapter [node]
-  (let [node (.node node) ;; get the vbox node
-        ]))
+(defn private-ip [_] nil)
 
-(when-feature node-proxy
-  (extend-type VmfestNode
-    pallet.node/NodeProxy
-    (proxy [node]
-        (let [n (.node node)
-              proxy (->>
-                     (manager/get-network-adapters n)
-                     (mapcat #(get-in % [:nat :forwards]))
-                     (filter #(= (str (node/ssh-port node)) (:guest-port %)))
-                     first)
-              port (:host-port proxy)]
-          (when-not (string/blank? port)
-            (try
-              {:port (Integer/parseInt port)
-               :host (or (:host-ip proxy) "127.0.0.1")}
-              (catch Exception e
-                (logging/warnf
-                 e "Could not decode host port for proxy from %s"
-                 port))))))))
+(defn is-64bit? [node]
+  (let [meta (image-meta-from-node node)
+        os-64-bit (:os-64-bit meta)
+        os-type-id (:os-type-id meta)]
+    ;; either :os-64-bit is present, or we get it from :os-type-id
+    ;; if present, or we try to guess from the VM itself
+    (or (or os-64-bit
+            (when os-type-id
+              (boolean (re-find #"_64" os-type-id))))
+        ;; try guessing it from the VBox Machine object. This should
+        ;; not be necessary in the near future. Remove after 0.3
+        (do
+          (logging/warnf
+           "Cannot determine if machine is 64 bit from metadata: '%s'" meta)
+          (if-let [os-type-id (session/with-no-session
+                                node [m] (.getOSTypeId m))]
+            (boolean (re-find #"_64" os-type-id))
+            (logging/error
+             "Cannot determine if machine is 64 bit by any means."))))))
+
+(defn hostname [node]
+  (session/with-no-session node [m]
+    (.getName m)))
+
+(defn os-family [node]
+  (let [meta (image-meta-from-node node)
+        os-family-from-meta (:os-family meta)]
+    (if os-family-from-meta
+      os-family-from-meta
+      ;; try guessing it from the VBox Machine object. This should
+      ;; not be necessary in the near future. Remove after 0.3
+      (do
+        (logging/warnf
+         "Cannot get os-family from node's metadata '%s'. Trying to guess"
+         meta)
+        (let [os-name (session/with-no-session node [m] (.getOSTypeId m))]
+          (or (os-family-from-name os-name os-name)
+              :centos) ;; todo: remove this hack!
+          )))))
+
+(defn os-version [node]
+  (let [meta (image-meta-from-node node)]
+    (:os-version meta)))
+
+(defn packager [node]
+  (let [meta (image-meta-from-node node)]
+    (or (:packager meta)
+        (packager-for-os (:os-family meta) (:os-version meta)))))
+
+(defn running? [node]
+  (node-running? node))
+
+(defn terminated? [node]
+  false)
+
+(defn id [node] (:id node))
+
+(defn image-user [node]
+  (let [meta (image-meta-from-node node)
+        username (:username meta)]
+    (when username
+      (make-user
+       username
+       (merge
+        (select-keys meta [:password :sudo-password :no-sudo]))))))
+
+(defn hardware [node]
+  (session/with-session node :shared [session m]
+    {:cpus [{:cores (machine/get-attribute m :cpu-count)}]
+     :ram (machine/get-attribute m :memory-size)
+     :disks (->>
+             (machine/get-attribute m :medium-attachments)
+             (map bean)
+             (map #(dissoc % :class :passthrough))
+             (doall->>
+              (map
+               (fn [a]
+                 (let [a (update-in
+                          a [:medium]
+                          (fn [medium]
+                            (let [m (medium/map-from-IMedium medium nil)]
+                              (-> m
+                                  (dissoc :children :parent :base :type)
+                                  (update-in
+                                   [:medium-format]
+                                   (comp keyword lower-case #(.getName %)))
+                                  (assoc :medium-type
+                                    (enum-to-kw (:type m)))
+                                  (assoc :size (:logical-size m (:size m)))
+                                  (assoc :physical-size (:size m))
+                                  (update-in [:device-type] enum-to-kw)
+                                  (update-in [:state] enum-to-kw)
+                                  (update-in [:format] enum-to-kw)
+                                  (update-in [:machine-ids]
+                                             #(vec (map identity %)))))))]
+                   (merge (:medium a)
+                          (-> a
+                              (dissoc :medium :nonRotational :wrapped
+                                      :typedWrapped)
+                              (assoc :ssd (:nonRotational a))))))))
+             (map (fn [m]
+                    (update-in
+                     m [:type]
+                     (comp keyword lower-case #(.name %)))))
+             vec)}))
+
+(defn proxy [node]
+  (let [proxy (->>
+               (manager/get-network-adapters node)
+               (mapcat #(get-in % [:nat :forwards]))
+               (filter #(= (str (node/ssh-port node)) (:guest-port %)))
+               first)
+        port (:host-port proxy)]
+    (when-not (string/blank? port)
+      (try
+        {:port (Integer/parseInt port)
+         :host (or (:host-ip proxy) "127.0.0.1")}
+        (catch Exception e
+          (logging/warnf
+           e "Could not decode host port for proxy from %s"
+           port))))))
+
+
+(defn node-map
+  [^vmfest.virtualbox.model.Machine node compute-service]
+  (-> {:id (id node)
+       :primary-ip (primary-ip node)
+       :hostname (hostname node)
+       :run-state (run-state node)
+       :os-family (os-family node)
+       :os-version (os-version node)
+       :packager (packager node)
+       :ssh-port 22
+       :hardware (hardware node)
+       :image-user (image-user node)
+       :compute-service compute-service}
+      (maybe-assoc :proxy (proxy node))))
 
 (defn- nil-if-blank [x]
   (if (string/blank? x) nil x))
@@ -381,34 +371,16 @@ Accessible means that VirtualBox itself can access the machine. In
         (doall (map #( wait-for-ip machine %) slots))]
     (empty? (filter string/blank? ip-seq))))
 
-(defmacro declare-bootstrap-via-ssh
-  []
-  (if (has-feature? multilang-script)
-    `(defn- bootstrap-via-ssh
-      [~'image ~'node ~'user ~'init-script]
-      (ssh-script-on-target
-       {:server {:node ~'node :image ~'image} :user ~'user}
-       {:node-value-path (gensym "vmfest")}
-       :script
-       [{:language :bash} ~'init-script]))
-    `(defn- bootstrap-via-ssh
-      [~'image ~'node ~'user ~'init-script]
-      (ssh-script-on-target
-       {:server {:node ~'node :image ~'image} :user ~'user}
-       {:node-value-path (gensym "vmfest")}
-       :script/bash
-       ~'init-script))))
-
-(declare-bootstrap-via-ssh)
 
 (defn- create-node
-  "Instantiates a compute node on vmfest and runs the supplied init script.
+  "Instantiates a compute node on vmfest.
 
   The node will be named 'machine-name', and will be built according
   to the supplied 'model'. This node will boot from the supplied
   'image' and will belong to the supplied 'group' "
   [compute-service server node-path node-spec machine-name image model
-   group-name init-script user]
+   group-name user]
+  (logging/debugf "Creating machine %s" machine-name)
   (logging/tracef
    "Creating node from image: %s and hardware model %s" image model)
   (let [machine (manager/instance*
@@ -439,29 +411,7 @@ Accessible means that VirtualBox itself can access the machine. In
     ;; something like 3 attempts. A single wait for 4s might not
     ;; work under high contention (e.g. starting many nodes)
     (Thread/sleep 4000)
-    (let [node (VmfestNode. machine compute-service)]
-      (when-not-feature run-nodes-without-bootstrap
-        (when-not (string/blank? init-script)
-          (logging/infof "Bootstrapping %s" (manager/get-ip machine))
-          (script/with-script-context
-            (action-plan/script-template-for-server {:image image})
-            (stevedore/with-script-language :pallet.stevedore.bash/bash
-              (let [user (if (:username image)
-                           (pallet.utils/make-user
-                            (:username image)
-                            :password (:password image)
-                            :no-sudo (:no-sudo image)
-                            :sudo-password (:sudo-password image))
-                           user)
-                    [{:keys [out exit]} session] (bootstrap-via-ssh
-                                                  image node user init-script)]
-                (when-not (zero? exit)
-                  (when (:destroy-on-bootstrap-fail node-spec true)
-                    (manager/destroy machine))
-                  (throw (ex-info
-                          (format "Bootstrap failed: %s" out)
-                          {:type :pallet/bootstrap-failure
-                           :group-spec node-spec}))))))))
+    (let [node (node-map machine compute-service)]
       node)))
 
 (defn- always-match
@@ -534,32 +484,45 @@ Accessible means that VirtualBox itself can access the machine. In
     (ffirst (all-images-from-template images template))))
 
 (defn serial-create-nodes
-  "Create all nodes for a group in parallel."
+  "Create all nodes for a group in series."
   [target-machines-to-create compute-service server node-path node-spec image
-   machine-model group-name init-script user]
-  (doall
-   (for [name target-machines-to-create]
-     (create-node
-      compute-service server node-path node-spec name image machine-model
-      group-name init-script user))))
+   machine-model group-name user ch]
+  (go-try ch
+    (>! ch
+        {:targets
+         (for [name target-machines-to-create]
+           (create-node
+            compute-service server node-path node-spec name image
+            machine-model group-name user))})))
+
+(defn create-node-thread
+  [compute-service server node-path node-spec name image machine-model
+   group-name user]
+  (thread
+    (try
+      {:new-targets [(create-node
+                      compute-service server node-path node-spec name image
+                      machine-model
+                      group-name user)]}
+      (catch Throwable t
+        {:exception t}))))
 
 (defn parallel-create-nodes
   "Create all nodes for a group in parallel."
   [target-machines-to-create compute-service server node-path node-spec image
-   machine-model group-name init-script user]
-  ;; the doseq ensures that all futures are completed before
-  ;; returning
-  (->>
-   (for [name target-machines-to-create]
-     (future
-       (create-node
-        compute-service server node-path node-spec name image machine-model
-        group-name init-script user)))
-   doall ;; doall forces creation of all futures before any deref
-   futures/add
-   (map #(futures/deref-with-logging % "Start of node"))
-   (filter identity)
-   doall))
+   machine-model group-name user ch]
+  (go-try ch
+    (let [cs (doall
+              (for [name target-machines-to-create]
+                (create-node-thread
+                 compute-service server node-path node-spec name
+                 image machine-model group-name user)))]
+      (loop [cs cs
+             res {}]
+        (if-let [c (first cs)]
+          (let [r (<! c)]
+            (recur (rest cs) (merge-rex-maps res r)))
+          (>! ch res))))))
 
 (def
   ^{:dynamic true
@@ -652,9 +615,9 @@ Accessible means that VirtualBox itself can access the machine. In
                        [{:attachment-type :bridged
                          :host-interface default-bridged-interface}])})))
 
-(defn image-template-from-group-spec [group-spec]
+(defn image-template-from-node-spec [node-spec]
   (->> [:image :hardware :location :network :qos]
-       (select-keys group-spec) vals (reduce merge)))
+       (select-keys node-spec) vals (reduce merge)))
 
 
 (defn node-shutdown [machine]
@@ -666,7 +629,9 @@ Accessible means that VirtualBox itself can access the machine. In
   (manager/wait-for-lockable-session-state machine 2000))
 
 (defn node-destroy [machine]
-  (node-shutdown machine)
+  (try
+    (node-shutdown machine)
+    (catch Exception e))
   (manager/destroy machine))
 
 (defn- accessible-machines
@@ -689,285 +654,305 @@ Accessible means that VirtualBox itself can access the machine. In
   (filter #(not (and (node-accessible? %) (node-running? %)))
           (manager/managed-machines server)))
 
+(defn destroy-node
+  "Destroy a single node.  Returns a node-id, exception tuple."
+  [node]
+  (let [id (node/id node)]
+    (try
+      (node-destroy (machine-for node))
+      {:old-targets [node]}
+      (catch Throwable e
+        {:exception e}))))
+
+(deftype ExtraDataNodeTag []
+  pallet.compute.protocols.NodeTagReader
+  (node-tag [_ node tag-name]
+    (debugf "node-tag %s" tag-name)
+    (manager/get-extra-data (machine-for node) tag-name))
+  (node-tag [_ node tag-name default-value]
+    (debugf "node-tag %s %s" tag-name default-value)
+    (let [value (manager/get-extra-data (machine-for node) tag-name)]
+      (if (string/blank? value)
+        (let [keys (manager/get-extra-data-keys (machine-for node))]
+          (if (seq (filter #(= tag-name %) keys))
+            value
+            default-value))
+        value)))
+  (node-tags [_ node]
+    (debugf "node-tags")
+    (into {}
+          (map
+           #(vector % (manager/get-extra-data (machine-for node) %))
+           (manager/get-extra-data-keys (machine-for node)))))
+  pallet.compute.protocols.NodeTagWriter
+  (tag-node! [_ node tag-name value]
+    (debugf "tag-node! %s %s" tag-name value)
+    (manager/set-extra-data (machine-for node) tag-name value))
+  (node-taggable? [_ node] true))
+
 (deftype VmfestService
     [server images locations network-type local-interface bridged-interface
      environment models tag-provider]
-  pallet.compute/ComputeService
-  (nodes [compute-service]
+
+  pallet.core.protocols/Closeable
+  (close [compute])
+
+  pallet.compute.protocols/ComputeService
+  (nodes [compute-service ch]
     ;; we only want to return operable machines. Pallet is expecting
     ;; to be able to ask questions about the nodes, for example the
     ;; group they belong, or their IP addresss. This would fail if the
     ;; machine is not accessible.
     ;; NOTE: this means that Pallet is effectively unable to manage
     ;; inaccessible machines or machines that are stopped.
-    (map #(VmfestNode. % compute-service) (operable-machines server)))
+    (with-domain :vmfest
+      (go-try ch
+        (>! ch {:targets (mapv #(node-map % compute-service)
+                               (operable-machines server))}))))
 
-  (ensure-os-family [compute-service group-spec]
-    (logging/debugf "ensure-os-family called with group-spec = %s" group-spec)
-    ;; if we are looking for a particular image via image-id, then we
-    ;; need to fetch the meta of that image and merge its contents
-    ;; with the contents of the template.
-    (let [template (image-template-from-group-spec group-spec)
-          image (or (image-from-template @images template)
-                    (let [msg (format
-                               "No matching image for %s in %s (using %s)"
-                               (pr-str (:image group-spec))
-                               @images
-                               locations)]
-                      (logging/error msg)
-                      (throw (ex-info msg {:type :pallet/unkown-image
-                                           :template template
-                                           :images @images}))))]
-      (update-in
-       group-spec [:image]
-       #(merge
-         {:image-id image}
-         (select-keys
-          (@images image)
-          [:os-family :os-version :os-64-bit :packager])
-         %))))
+  pallet.compute.protocols/ComputeServiceNodeCreateDestroy
+  (images [compute ch]
+    (with-domain :vmfest
+      (go-try ch
+        (>! ch [@images]))))
 
-  (run-nodes
-    [compute-service group-spec node-count user init-script options]
-    (try
-      (let [template (image-template-from-group-spec group-spec)
-            _ (logging/debugf "run-nodes with template %s" template)
-            image (or (image-from-template @images template)
-                      (let [msg (format
+  (create-nodes
+    [compute-service node-spec user node-count options ch]
+    (with-domain :vmfest
+      (debugf "create-nodes %s nodes with options %s" node-count options)
+      (go-try ch
+        (let [template (image-template-from-node-spec node-spec)
+              _ (logging/debugf "create-nodes with template %s" template)
+              image (or (image-from-template
+                         @images template)
+                        (throw (RuntimeException.
+                                (format
                                  "No matching image for %s in %s (using %s)"
-                                 (pr-str (:image group-spec))
+                                 (pr-str (:image node-spec))
                                  @images
-                                 locations)]
-                        (logging/error msg)
-                        (throw (ex-info msg {:type :pallet/unkown-image
-                                             :template template}))))
-            group-name (name (:group-name group-spec))
-            machines (operable-machines server)
-            current-machines-in-group (filter
-                                       #(= group-name
-                                           (manager/get-extra-data
-                                            % group-name-tag))
-                                       machines)
-            current-machine-names (into #{}
-                                        (map
-                                         #(session/with-no-session % [m]
-                                            (.getName m))
-                                         current-machines-in-group))
-            target-indices (range (+ node-count
-                                     (count current-machines-in-group)))
-            target-machine-names (into #{}
-                                       (map
-                                        #(machine-name group-name %)
-                                        target-indices))
-            target-machines-already-existing (clojure.set/intersection
-                                              current-machine-names
-                                              target-machine-names)
-            target-machines-to-create (clojure.set/difference
-                                       target-machine-names
-                                       target-machines-already-existing)
-            create-nodes-fn (get-in environment
-                                    [:algorithms :vmfest :create-nodes-fn]
-                                    parallel-create-nodes)
-            image-map (or (image @images)
-                          ;; when image-id is present, there is no
-                          ;; guarantee that the image actually exists,
-                          ;; so we'll let the user know.
-                          (throw
-                           (ex-info
-                            (format "The selected image %s is not registered in vmfest  (valid are %s)"
-                                    image (keys @images))
-                            {:type :pallet/unkown-image
-                             :image image
-                             :known-images (keys @images)})))
-            ;; select the network config, giving preference to the
-            ;; node-spec first, then image meta, and finally the
-            ;; provider config.
-            network-type (or (:network-type template)
-                             (:network-type image-map)
-                             network-type)
-            bridged-interface (or (:bridged-interface template)
-                                  (:bridged-interface image-map)
-                                  bridged-interface)
-            local-interface (or (:local-interface template)
-                                (:local-interface image-map)
-                                local-interface)
-            nat-rules (or (:nat-rules template)
-                          (:nat-rules image-map))
-            final-hardware-model (selected-hardware-model
-                                  template
-                                  models
-                                  (merge
-                                   (select-keys
-                                    image-map [:storage :boot-mount-point])
-                                   (:hardware image-map))
-                                  network-type
-                                  nat-rules
-                                  local-interface
-                                  bridged-interface)]
-        (logging/debug
-         "Final network config: type %s bridged-if %s local-if %s nat-rules"
-         network-type bridged-interface local-interface nat-rules)
-        (logging/debug (str "current-machine-names " current-machine-names))
-        (logging/debug (str "target-machine-names " target-machine-names))
-        (logging/debug (str "target-machines-already-existing "
-                            target-machines-already-existing))
-        (logging/debug (str "target-machines-to-create"
-                            target-machines-to-create))
-        (logging/debugf "Selected image: %s" image)
-        (logging/debugf "Hardware model %s" final-hardware-model)
-        (create-nodes-fn
-          target-machines-to-create
-          compute-service
-          server
-          (:node-path locations)
-          group-spec
-          (image @images)
-          final-hardware-model
-          group-name
-          init-script user))))
+                                 locations))))
+              group-name (:node-name options)
+              machines (operable-machines server)
+              current-machines-in-group (filter
+                                         #(= group-name
+                                             (manager/get-extra-data
+                                              % group-name-tag))
+                                         machines)
+              current-machine-names (into #{}
+                                          (map
+                                           #(session/with-no-session % [m]
+                                              (.getName m))
+                                           current-machines-in-group))
+              target-indices (range (+ node-count
+                                       (count current-machines-in-group)))
+              target-machine-names (into #{}
+                                         (map
+                                          #(machine-name group-name %)
+                                          target-indices))
+              target-machines-already-existing (clojure.set/intersection
+                                                current-machine-names
+                                                target-machine-names)
+              target-machines-to-create (clojure.set/difference
+                                         target-machine-names
+                                         target-machines-already-existing)
+              create-nodes-fn (get-in environment
+                                      [:algorithms :vmfest :create-nodes-fn]
+                                      parallel-create-nodes)
+              image-map (or (image @images)
+                            ;; when image-id is present, there is no
+                            ;; guarantee that the image actually exists,
+                            ;; so we'll let the user know.
+                            (throw
+                             (ex-info
+                              (format "The selected image %s is not registered in vmfest  (valid are %s)"
+                                      image (keys @images))
+                              {:type :pallet/unkown-image
+                               :image image
+                               :known-images (keys @images)})))
+              ;; select the network config, giving preference to the
+              ;; node-spec first, then image meta, and finally the
+              ;; provider config.
+              network-type (or (:network-type template)
+                               (:network-type image-map)
+                               network-type)
+              bridged-interface (or (:bridged-interface template)
+                                    (:bridged-interface image-map)
+                                    bridged-interface)
+              local-interface (or (:local-interface template)
+                                  (:local-interface image-map)
+                                  local-interface)
+              nat-rules (or (:nat-rules template)
+                            (:nat-rules image-map))
+              final-hardware-model (selected-hardware-model
+                                    template
+                                    models
+                                    (merge
+                                     (select-keys
+                                      image-map [:storage :boot-mount-point])
+                                     (:hardware image-map))
+                                    network-type
+                                    nat-rules
+                                    local-interface
+                                    bridged-interface)
+              c (chan)]
+          (logging/debug
+           "Final network config: type %s bridged-if %s local-if %s nat-rules"
+           network-type bridged-interface local-interface nat-rules)
+          (logging/debug (str "current-machine-names " current-machine-names))
+          (logging/debug (str "target-machine-names " target-machine-names))
+          (logging/debug (str "target-machines-already-existing "
+                              target-machines-already-existing))
+          (logging/debug (str "target-machines-to-create"
+                              target-machines-to-create))
+          (logging/debugf "Selected image: %s" image)
+          (logging/debugf "Hardware model %s" final-hardware-model)
+          (create-nodes-fn
+           target-machines-to-create
+           compute-service
+           server
+           (:node-path locations)
+           node-spec
+           (image @images)
+           final-hardware-model
+           group-name
+           user
+           c)
+          (>! ch (<! c))))))
 
-  (reboot
-    [compute nodes]
-    (doseq [node nodes]
-      (node-shutdown node)
-      (manager/start node)))
+  (destroy-nodes
+    [compute nodes ch]
+    (with-domain :vmfest
+      (go-try ch
+        (if-let [broken-vms (inaccessible-machines server)]
+          ;; garbage collect inaccessible machines
+          (doseq [machine broken-vms]
+            (manager/destroy machine)))
+        ;; TODO consider running this loop in parallel
+        (loop [nodes nodes
+               res {}]
+          (if-let [node (first nodes)]
+            (let [r (destroy-node node)]
+              (recur (rest nodes) (merge-rex-maps res r)))
+            (>! ch res))))))
 
-  (boot-if-down
-    [compute nodes]
-    (doseq [node nodes]
-      (manager/start node)))
+  pallet.compute.protocols/ComputeServiceNodeStop
+  (stop-nodes
+    [compute nodes ch]
+    (with-domain :vmfest
+      (go-try ch
+        (doseq [node nodes]
+          (manager/stop (machine-for node)))
+        (>! ch []))))
 
-  (shutdown-node
-    [compute node _]
-    ;; todo: wait for completion
-    (logging/infof "Shutting down %s" (pr-str node))
-    (let [machine (.node node)]
-      (node-shutdown machine)))
+  (restart-nodes
+    [compute nodes ch]
+    (with-domain :vmfest
+      (go-try ch
+        (doseq [node nodes]
+          (manager/start (machine-for node)))
+        (>! ch []))))
 
-  (shutdown
-    [compute nodes user]
-    (doseq [node nodes]
-      (node-shutdown node)))
+  pallet.compute.protocols/ComputeServiceNodeSuspend
+  (suspend-nodes [compute nodes ch]
+    (with-domain :vmfest
+      (go-try ch
+        (doseq [node nodes]
+          (manager/pause (machine-for node)))
+        (>! ch []))))
 
-  (destroy-nodes-in-group
-    [compute group-name]
-    ;; garbage collect inaccessible machines
-    (if-let [broken-vms (inaccessible-machines server)]
-      (doseq [machine broken-vms]
-        (manager/destroy machine)))
-    (let [nodes (locking compute ;; avoid disappearing machines
-                  (vec
-                   (filter
-                    #(= group-name (manager/get-extra-data % group-name-tag))
-                    (operable-machines server))))]
-      (doseq [machine nodes]
-        (node-destroy machine))))
+  (resume-nodes
+    [compute nodes ch]
+    (with-domain :vmfest
+      (go-try ch
+        (doseq [node nodes]
+          (manager/resume (machine-for node)))
+        (>! ch []))))
 
-  (destroy-node
-    [compute node]
-    {:pre [node]}
-    (node-destroy (.node node)))
 
-  (images [compute]
-    @images)
-
-  (close [compute])
-  pallet.environment.Environment
+  pallet.environment.protocols.Environment
   (environment [_] environment)
+
   ImageManager
   (install-image
     [compute url {:as options}]
-    (logging/debugf "installing image to %s with options %s"
-                    (:model-path locations) options)
-    (when-let [job (apply
-                    image/setup-model
-                    url server :model-path (:model-path locations)
-                    (apply concat options))]
-      (swap! images merge (:meta job))))
+    (with-domain :vmfest
+      (logging/debugf "installing image to %s with options %s"
+                      (:model-path locations) options)
+      (when-let [job (apply
+                      image/setup-model
+                      url server :model-path (:model-path locations)
+                      (apply concat options))]
+        (swap! images merge (:meta job)))))
+
   (publish-image [service image-kw blobstore container {:keys [path]}]
-    (if-let [image (image-kw @images)]
-      (session/with-vbox server [_ vbox]
-        (let [medium (virtualbox/find-medium vbox (:uuid image))
-              file (java.io.File. (.getLocation medium))]
-          (filesystem/with-temp-file [gzip-file]
-            (logging/debugf "gzip to %s" (.getPath gzip-file))
-            (gzip file gzip-file)
-            (logging/debugf "put gz %s" (.getPath gzip-file))
-            (try
-              (blobstore/put
-               blobstore container (or path (str (.getName file) ".gz"))
-               gzip-file)
-              (catch Exception e
-                (logging/error e "Upload failed"))))
-          (logging/info "put meta")
-          (blobstore/put
-           blobstore container
-           (string/replace (or path (.getName file)) #"\.vdi.*" ".meta")
-           (pr-str {image-kw (dissoc image :uuid)}))))
-      (let [msg (format
-                 "Could not find image %s. Known images are %s."
-                 image-kw (keys @images))]
-        (logging/error msg)
-        (throw (ex-info
-                msg
-                {:type :pallet/unkown-image
-                 :image image-kw
-                 :known-images (keys @images)})))))
+    (with-domain :vmfest
+      (if-let [image (image-kw @images)]
+        (session/with-vbox server [_ vbox]
+          (let [medium (virtualbox/find-medium vbox (:uuid image))
+                file (java.io.File. (.getLocation medium))]
+            (filesystem/with-temp-file [gzip-file]
+              (logging/debugf "gzip to %s" (.getPath gzip-file))
+              (gzip file gzip-file)
+              (logging/debugf "put gz %s" (.getPath gzip-file))
+              (try
+                (blobstore/put
+                 blobstore container (or path (str (.getName file) ".gz"))
+                 gzip-file)
+                (catch Exception e
+                  (logging/error e "Upload failed"))))
+            (logging/info "put meta")
+            (blobstore/put
+             blobstore container
+             (string/replace (or path (.getName file)) #"\.vdi.*" ".meta")
+             (pr-str {image-kw (dissoc image :uuid)}))))
+        (let [msg (format
+                   "Could not find image %s. Known images are %s."
+                   image-kw (keys @images))]
+          (logging/error msg)
+          (throw (ex-info
+                  msg
+                  {:type :pallet/unkown-image
+                   :image image-kw
+                   :known-images (keys @images)}))))))
+
   (has-image? [_ image-kw]
-    ((or @images {}) image-kw))
+    (with-domain :vmfest
+      ((or @images {}) image-kw)))
+
   (find-images [_ template]
-    (all-images-from-template @images template)))
+    (with-domain :vmfest
+      (all-images-from-template @images template)))
 
-(when-feature compute-service-properties
-  (extend-type VmfestService
-    pallet.compute/ComputeServiceProperties
-    (service-properties [compute]
-      (assoc (bean compute) :provider :vmfest))))
+  pallet.compute.protocols/ComputeServiceProperties
+  (service-properties [compute]
+    (assoc (bean compute) :provider :vmfest))
 
-(defmacro add-node-tag []
-  (if (has-feature? taggable-nodes)
-    '(do
-       (deftype ExtraDataNodeTag []
-         pallet.compute.NodeTagReader
-         (node-tag [_ node tag-name]
-           (manager/get-extra-data (.node node) tag-name))
-         (node-tag [_ node tag-name default-value]
-           (let [value (manager/get-extra-data (.node node) tag-name)]
-             (if (string/blank? value)
-               (let [keys (manager/get-extra-data-keys (.node node))]
-                 (if (seq (filter #(= tag-name %) keys))
-                   value
-                   default-value))
-               value)))
-         (node-tags [_ node]
-           (into {}
-                 (map
-                  #(vector % (manager/get-extra-data (.node node) %))
-                  (manager/get-extra-data-keys (.node node)))))
-         pallet.compute.NodeTagWriter
-         (tag-node! [_ node tag-name value]
-           (manager/set-extra-data (.node node) tag-name value))
-         (node-taggable? [_ node] true))
-       (extend-type VmfestService
-         pallet.compute/NodeTagReader
-         (node-tag
-           ([compute node tag-name]
-              (compute/node-tag
-               (.tag_provider compute) node tag-name))
-           ([compute node tag-name default-value]
-              (compute/node-tag
-               (.tag_provider compute) node tag-name default-value)))
-         (node-tags [compute node]
-           (compute/node-tags (.tag_provider compute) node))
-         pallet.compute/NodeTagWriter
-         (tag-node! [compute node tag-name value]
-           (compute/tag-node! (.tag_provider compute) node tag-name value))
-         (node-taggable? [compute node]
-           (compute/node-taggable? (.tag_provider compute) node)))
-       (defn default-tag-provider [] (ExtraDataNodeTag.)))
-    `(defn ~'default-tag-provider [] nil)))
+  pallet.compute.protocols/ComputeServiceNodeBaseName
+  (matches-base-name? [_ node-name base-name]
+    (let [n (.lastIndexOf node-name "-")]
+      (if (not (neg? n))
+        (= base-name (subs node-name 0 n)))))
 
-(add-node-tag)
+  pallet.compute.protocols/NodeTagReader
+  (node-tag
+    [compute node tag-name]
+    (pallet.compute.protocols/node-tag
+     (.tag_provider compute) node tag-name))
+  (node-tag
+    [compute node tag-name default-value]
+    (pallet.compute.protocols/node-tag
+     (.tag_provider compute) node tag-name default-value))
+  (node-tags [compute node]
+    (pallet.compute.protocols/node-tags (.tag_provider compute) node))
+
+  pallet.compute.protocols/NodeTagWriter
+  (tag-node! [compute node tag-name value]
+    (pallet.compute.protocols/tag-node!
+     (.tag_provider compute) node tag-name value))
+  (node-taggable? [compute node]
+    (pallet.compute.protocols/node-taggable? (.tag_provider compute) node)))
+
+(defn default-tag-provider [] (ExtraDataNodeTag.))
 
 (def base-model
   {:memory-size 512
@@ -1055,29 +1040,3 @@ Accessible means that VirtualBox itself can access the machine. In
      environment
      models
      (or tag-provider (default-tag-provider)))))
-
-
-(defmethod clojure.core/print-method VmfestNode
-  [node writer]
-  (let [machine (.node node)
-        accessible (try (session/with-vbox (:server machine) [_ vbox]
-                          (node-accessible? machine))
-                        (catch Exception _))]
-    (cond
-      (not accessible)
-      (.write writer "Unaccessible vmfest node")
-
-      (not
-       (->>
-        (compute/nodes (.service node))
-        (some #(= (:id machine) (:id (.node %))))))
-      (.write writer "Unregistered vmfest node")
-
-      :else
-      (.write
-       writer
-       (format
-        "%14s\t %14s\t public: %s"
-        (try (node/hostname node) (catch Throwable e "unknown"))
-        (try (node/group-name node) (catch Throwable e "unknown"))
-        (try (node/primary-ip node) (catch Throwable e "unknown")))))))

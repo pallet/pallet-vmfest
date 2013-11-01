@@ -145,6 +145,7 @@
     [clojure.tools.logging :as logging]
     [pallet.compute.implementation :as implementation]
     [pallet.compute.vmfest.protocols :as impl]
+    [pallet.core.context :refer [with-domain]]
     [dynapath.util :as dp]
     [clojure.java.io :refer [copy resource]])
   (:use
@@ -209,10 +210,11 @@
     :xpcom
     (if (= comm :ws)
       (let [error-msg
-            (str "This VMFest provider is already configured to use XPCOM but "
-                 "you are attempting to configure it to use Web Services. Only "
-                 "one communication can be used at any time, and it can only "
-                 "be set once per JVM run.")]
+            (str
+             "This VMFest provider is already configured to use XPCOM but "
+             "you are attempting to configure it to use Web Services. Only "
+             "one communication can be used at any time, and it can only "
+             "be set once per JVM run.")]
         (logging/error error-msg)
         (throw (ex-info
                 error-msg
@@ -275,6 +277,8 @@
 
 (defmethod implementation/service :vmfest
   [_ {:keys [vbox-comm] :or {vbox-comm :xpcom} :as options}]
-  (add-vbox-to-classpath vbox-comm)
-  (require 'pallet.compute.vmfest.service)
-  ((ns-resolve 'pallet.compute.vmfest.service 'vmfest-service-impl) _ options))
+  (with-domain :vmfest
+    (add-vbox-to-classpath vbox-comm)
+    (require 'pallet.compute.vmfest.service)
+    ((ns-resolve 'pallet.compute.vmfest.service 'vmfest-service-impl)
+     _ options)))
