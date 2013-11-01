@@ -25,6 +25,7 @@ classpath before vmfest itself is loaded"
    [pallet.compute.implementation :as implementation]
    [pallet.compute.jvm :as jvm]
    [pallet.compute.vmfest.properties]   ; needs to be before vmfest
+   [pallet.compute.vmfest.protocols :refer :all]
    [pallet.environment :as environment]
    [pallet.execute :as execute]
    [pallet.futures :as futures]
@@ -327,15 +328,10 @@ Accessible means that VirtualBox itself can access the machine. In
                (recur))
              ip))))))
 
-
 (defn- machine-name
   "Generate a machine name based on the grup name and an index"
   [group-name n]
   (format "%s-%s" group-name n))
-
-(defprotocol VirtualBoxService
-  (os-families [compute] "Return supported os-families")
-  (medium-formats [compute] "Return supported medium-formats"))
 
 (defn- node-data
   "data about a running node: name, description, session state,
@@ -583,16 +579,6 @@ Accessible means that VirtualBox itself can access the machine. In
   (with-open [input (io/input-stream from)
               output (java.util.zip.GZIPOutputStream. (io/output-stream to))]
     (io/copy input output)))
-
-(defprotocol ImageManager
-  (install-image [service url {:as options}]
-    "Install the image from the specified `url`")
-  (publish-image [service image blobstore container {:keys [path] :as options}]
-    "Publish the image to the specified blobstore container")
-  (has-image? [service image-key]
-    "Predicate to test for the presence of a specific image")
-  (find-images [service template]
-    "Determine the best match image for a given image template"))
 
 (defn- hardware-model-from-template [model template network-type interface]
   (merge model
@@ -969,12 +955,6 @@ Accessible means that VirtualBox itself can access the machine. In
     `(defn ~'default-tag-provider [] nil)))
 
 (add-node-tag)
-
-(defn add-image
-  "Add an image to the images available. The image will be installed from the
-   specified `url-string`."
-  [compute url-string & {:as options}]
-  (install-image compute url-string options))
 
 (def base-model
   {:memory-size 512

@@ -144,6 +144,7 @@
   (:require
     [clojure.tools.logging :as logging]
     [pallet.compute.implementation :as implementation]
+    [pallet.compute.vmfest.protocols :as impl]
     [dynapath.util :as dp]
     [clojure.java.io :refer [copy resource]])
   (:use
@@ -157,30 +158,27 @@
   "Add an image to the images available. The image will be installed from the
    specified `url-string`."
   [compute url-string & {:as options}]
-  (let [the-fn (ns-resolve 'pallet.compute.vmfest.service 'add-image)]
-    (apply the-fn compute url-string (flatten-map options))))
+  (impl/install-image compute url-string options))
 
 (defn find-images
   "Determine the best match image for a given image template"
   [service template]
-  ((ns-resolve 'pallet.compute.vmfest.service 'find-images) service template))
+  (impl/find-images service template))
 
 (defn install-image
   "Install the image from the specified `url`"
   [service url & {:as options}]
-  ((ns-resolve 'pallet.compute.vmfest.service 'install-image)
-   service url (flatten-map options)))
+  (impl/install-image service url (flatten-map options)))
 
 (defn publish-image
   "Publish the image to the specified blobstore container"
   [service image blobstore container {:keys [path] :as options}]
-  ((ns-resolve 'pallet.compute.vmfest.service 'publish-image)
-   service image blobstore container options))
+  (impl/service image blobstore container options))
 
 (defn has-image?
   "Predicate to test for the presence of a specific image"
   [service image-key]
-  ((ns-resolve 'pallet.compute.vmfest.service 'has-image?) service image-key))
+  (impl/has-image? service image-key))
 
 ;;;; Compute service SPI
 (defn supported-providers []
