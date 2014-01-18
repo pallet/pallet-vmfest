@@ -173,7 +173,7 @@
 (defn publish-image
   "Publish the image to the specified blobstore container"
   [service image blobstore container {:keys [path] :as options}]
-  (impl/service image blobstore container options))
+  (impl/publish-image service image blobstore container options))
 
 (defn has-image?
   "Predicate to test for the presence of a specific image"
