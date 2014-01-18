@@ -1,5 +1,9 @@
 # Release Notes
 
+- Use vmfest 0.3.0
+
+- Move protocols to their own namespace
+
 ## 0.3.0-beta.2
 
 - Update to vmfest 0.3.0-beta.3
