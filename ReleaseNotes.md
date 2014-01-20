@@ -1,5 +1,17 @@
 # Release Notes
 
+## 0.4.0-alpha.1
+
+- Update README for 0.4.0
+
+- update vboxj*.jar to version 4.3.6
+
+- Use vmfest-0.4.0-alpha.1
+
+- Update vmfest to 0.4.0
+
+## 0.3.0-RC.1
+
 - Use vmfest 0.3.0
 
 - Move protocols to their own namespace

@@ -17,7 +17,7 @@ You can learn more about how to use Pallet from the online [documentation][docs]
 2. [VirtualBox 4.3.x](https://www.virtualbox.org/wiki/Downloads)
  (latest). It won't work with older versions of VirtualBox. If you
  would like to continue using Virtualbox 4.2.x then refer to
- [pallet-vmfest 0.3.0-RC.1](https://github.com/pallet/pallet-vmfest/tree/pallet-vmfest-0.3.0-RC.1)
+ [pallet-vmfest 0.4.0-alpha.1](https://github.com/pallet/pallet-vmfest/tree/pallet-vmfest-0.4.0-alpha.1)
 
 
 ## Usage
