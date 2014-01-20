@@ -14,8 +14,10 @@ You can learn more about how to use Pallet from the online [documentation][docs]
   $ lein new pallet quickstart
   ```
 
-2. [VirtualBox 4.2.x](https://www.virtualbox.org/wiki/Downloads)
- (latest). It won't work with older versions of VirtualBox.
+2. [VirtualBox 4.3.x](https://www.virtualbox.org/wiki/Downloads)
+ (latest). It won't work with older versions of VirtualBox. If you
+ would like to continue using Virtualbox 4.2.x then refer to
+ [pallet-vmfest 0.3.0-RC.1](https://github.com/pallet/pallet-vmfest/tree/pallet-vmfest-0.3.0-RC.1)
 
 
 ## Usage
@@ -28,8 +30,8 @@ You can learn more about how to use Pallet from the online [documentation][docs]
 If you use leiningen, add the following dependencies to your project.clj file (pallet will already be there if you used the leiningen pallet template):
 
 ``` clojure
-:dependencies [[com.palletops/pallet "0.8.0-RC.2"]
-               [com.palletops/pallet-vmfest "0.3.0-RC.1"]]
+:dependencies [[com.palletops/pallet "0.8.0-RC.6"]
+               [com.palletops/pallet-vmfest "0.4.0-alpha.1"]]
 ```
 
 If you use maven, add the following to your pom.xml file:
@@ -39,12 +41,12 @@ If you use maven, add the following to your pom.xml file:
   <dependency>
     <groupId>com.palletops</groupId>
     <artifactId>pallet</artifactId>
-    <version>0.8.0-RC.2</version>
+    <version>0.8.0-RC.6</version>
   </dependency>
   <dependency>
     <groupId>com.palletops</groupId>
     <artifactId>pallet-vmfest</artifactId>
-    <version>0.3.0-RC.1</version>
+    <version>0.4.0-alpha.1</version>
   </dependency>
 <dependencies>
 ```
@@ -388,7 +390,7 @@ Licensed under [EPL](http://www.eclipse.org/legal/epl-v10.html)
 
 [Contributors](https://www.ohloh.net/p/pallet-clj/contributors)
 
-Copyright 2010, 2011, 2012, 2013  Hugo Duncan and Antoni Batchelli
+Copyright 2010-2014  Hugo Duncan and Antoni Batchelli
 
 
 
