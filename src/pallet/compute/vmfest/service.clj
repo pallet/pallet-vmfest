@@ -636,7 +636,8 @@ Accessible means that VirtualBox itself can access the machine. In
                        (= network-type :local)
                        [{:attachment-type :host-only
                          :host-only-interface default-local-interface}
-                        {:attachment-type :nat}]
+                        {:attachment-type :nat
+                         :nat-rules default-nat-rules}]
                        ;; nat only networking
                        (= network-type :nat)
                        [{:attachment-type :nat
