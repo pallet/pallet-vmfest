@@ -609,21 +609,21 @@ Accessible means that VirtualBox itself can access the machine. In
    default-network-type default-nat-rules default-local-interface
    default-bridged-interface]
   (let [model
-        (cond
-          ;; if a model is specified, we take it
-          hardware-model (merge (second (first models)) hardware-model)
-          ;; if not, is a model key provided?
-          hardware-id (hardware-id models)
-          ;; we'll build the model from the template then.
-          :else (hardware-model-from-template
-                 ;; use the first model in the list
-                 (second (first models))
-                 template
-                 default-network-type
-                 ;; pass the right interface for network-type
-                 (if (= :local default-network-type)
-                   default-local-interface
-                   default-bridged-interface)))
+        ;; Builds up a hardware model via succesive merging
+        ;; Use first hardware model as a base
+        (cond-> (second (first models))
+          ;; If hardware-id provided, use that to override
+          hardware-id (merge (get models (keyword hardware-id)))
+          ;; Merge in hardware-model overrides
+          hardware-model (merge hardware-model)
+          ;; Use template as final say
+          true (hardware-model-from-template
+                template
+                default-network-type
+                ;; pass the right interface for network-type
+                (if (= :local default-network-type)
+                  default-local-interface
+                  default-bridged-interface)))
         ;; if no network-type is speficied at this point, use the
         ;; default
         network-type (or (:network-type model) default-network-type)]
