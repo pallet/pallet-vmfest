@@ -20,7 +20,6 @@ classpath before vmfest itself is loaded"
    [clojure.java.io :as io]
    [clojure.string :as string]
    [clojure.tools.logging :as logging :refer [debugf]]
-   [pallet.utils.async :refer [go-try]]
    [pallet.blobstore :as blobstore]
    [pallet.common.filesystem :as filesystem]
    [pallet.compute :as compute]
@@ -35,6 +34,7 @@ classpath before vmfest itself is loaded"
    [pallet.kb :refer [packager-for-os]]
    [pallet.node :as node]
    [pallet.utils :as utils :refer [maybe-assoc]]
+   [pallet.utils.async :refer [go-try]]
    [pallet.utils.rex-map :refer [merge-rex-maps]]
    [pallet.user :refer [make-user]]
    [vmfest.manager :as manager]
@@ -714,7 +714,7 @@ Accessible means that VirtualBox itself can access the machine. In
   (images [compute ch]
     (with-domain :vmfest
       (go-try ch
-        (>! ch [@images]))))
+        (>! ch {:images @images}))))
 
   (create-nodes
     [compute-service node-spec user node-count options ch]
