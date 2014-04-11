@@ -102,7 +102,7 @@
    Networking
    ----------
 
-   Pallet offers two networking models: local and bridged.
+   Pallet offers three networking models: local, nat, and bridged.
 
    In Local mode pallet creates two network interfaces in the VM, one for an
    internal network (e.g. vboxnet0), and the other one for a NAT network. This
@@ -110,8 +110,12 @@
    the image booted to bring up at least eth0 and eth1, so this method won't
    work on all images.
 
+   In Nat mode pallet creates a single network interface in the VM for a NAT
+   network. By default, the NAT service will be configured to forward the ssh
+   port 22 on the VM to a free port on the host.
+
    In Bridged mode pallet creates one interface in the VM that is bridged on a
-   phisical network interface. For pallet to work, this physical interface must
+   physical network interface. For pallet to work, this physical interface must
    have an IP address that must be hooked in an existing network. This mode
    works with all images.
 
@@ -123,9 +127,17 @@
    - the service configuration contains a `:default-network-type` entry
    - `:local`
 
-   Each networking type must attach to a network interface, be it local or
-   bridged.  The decision about which network interface to attach is done in the
-   following way (in order):
+   Both local and nat networking types let you specify additional nat-rules which
+   can be used to configure the VMs NAT service. Currently, this is limited to
+   specifying port-forwarding rules.
+       `:hardware {:hardware-model {:nat-rules
+                                    [{:name "http", :protocol :tcp,
+                                      :host-ip "", :host-port 8080,
+                                      :guest-ip "", :guest-port 80}]}}
+
+   The local and bridged networking types must attach to a network interface.
+   The decision about which network interface to attach is done in the following
+   way (in order):
 
    - For bridged networking:
        - A `:default-bridged-interface` entry exists in the service definition
