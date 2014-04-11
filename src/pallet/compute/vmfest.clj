@@ -64,20 +64,24 @@
    VMs' hardware configuration
    ---------------------------
 
-   The hardware model to be run by pallet can be defined in the node template or
-   built from the template and a default model. The model will determine by the
-   first match in the following options
+   The hardware model to be run by pallet is created via succesive merging
+   of a default model, a specified hardware-id, hardware-model, and/or
+   model template. The combined model is determined as follows:
 
-   - The template has a `:hardware-model` entry with a vmfest hardware map.
-     The VMs created will follow this model
-         e.g. `{... :hardware-model {:memory-size 1400 ...}}`
-   - The template has a `:hardware-id` entry. The value for this entry should
-     correspond to an entry in the hardware-models map (or one of the entries
-     that pallet offers by default.
-         e.g. `{... :hardware-id :small ...}`
-   - The template has no hardware entry. Pallet will use the first model
-     in the hardware-models map to build an image that matches the rest of
-     the relevant entries in the map.
+   - Pallet will use the first model in the hardware-models map as a base
+   - If the template has a `:hardware-id` entry, the value for this entry
+     will be used to find a hardware model in the hardware-models map or
+     one of the entries that pallet offers by default. When a model is found,
+     it is merged over the base model above. The value of `:hardware-id` needs
+     to be a string but will be converted to a keyword when used for lookup.
+         e.g. `:hardware {... :hardware-id \"small\" ...}`
+   - If the template has a `:hardware-model` entry with a vmfest hardware map,
+     then the options specified will be merged over any previous settings
+         e.g. `:hardware {... :hardware-model {:memory-size 1400 ...}}`
+   - Finally, any of the following options specified in the hardware template
+     will be merged 
+         :min-ram   -> :memory-size
+         :min-cores -> :cpu-count
 
    By default, pallet offers the following specializations of this base model:
 
