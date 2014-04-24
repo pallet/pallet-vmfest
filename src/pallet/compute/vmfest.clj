@@ -135,9 +135,9 @@
    can be used to configure the VMs NAT service. Currently, this is limited to
    specifying port-forwarding rules.
        `:hardware {:hardware-model {:nat-rules
-                                    [{:name "http", :protocol :tcp,
-                                      :host-ip "", :host-port 8080,
-                                      :guest-ip "", :guest-port 80}]}}
+                                    [{:name \"http\", :protocol :tcp,
+                                      :host-ip \"\", :host-port 8080,
+                                      :guest-ip \"\", :guest-port 80}]}}
 
    The local and bridged networking types must attach to a network interface.
    The decision about which network interface to attach is done in the following
